@@ -12,30 +12,9 @@ export type Database = {
         Relationships: []
       }
       profiles: {
-        Row: {
-          id: string
-          household_id: string
-          user_id: string | null
-          display_name: string
-          email: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          household_id: string
-          user_id?: string | null
-          display_name: string
-          email?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          household_id?: string
-          user_id?: string | null
-          display_name?: string
-          email?: string | null
-          created_at?: string
-        }
+        Row: { id: string; household_id: string; display_name: string; created_at: string }
+        Insert: { id?: string; household_id: string; display_name: string; created_at?: string }
+        Update: { id?: string; household_id?: string; display_name?: string; created_at?: string }
         Relationships: []
       }
       items: {
@@ -121,20 +100,7 @@ export type Database = {
       }
     }
     Views: Record<string, never>
-    Functions: {
-      create_household: {
-        Args: { household_name: string; display_name: string }
-        Returns: string
-      }
-      join_household: {
-        Args: { target_household_id: string; display_name: string }
-        Returns: string
-      }
-      add_household_member: {
-        Args: { display_name: string }
-        Returns: string
-      }
-    }
+    Functions: Record<string, never>
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>
   }

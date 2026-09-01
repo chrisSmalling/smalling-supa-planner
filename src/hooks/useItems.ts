@@ -20,22 +20,31 @@ export function useItems(householdId: string | null) {
   statusesRef.current = statuses
 
   const refresh = React.useCallback(async () => {
-    if (!householdId) return
+    if (!householdId) {
+      setLoading(false)
+      return
+    }
     setError(null)
-    const [itemsRes, statusRes] = await Promise.all([
-      supabase.from('items').select('*').eq('household_id', householdId),
-      supabase
-        .from('item_status')
-        .select('*, items!inner(household_id)')
-        .eq('items.household_id', householdId),
-    ])
-    if (itemsRes.error) setError(itemsRes.error.message)
-    else setItems(itemsRes.data as unknown as Item[])
+    try {
+      const [itemsRes, statusRes] = await Promise.all([
+        supabase.from('items').select('*').eq('household_id', householdId),
+        supabase
+          .from('item_status')
+          .select('*, items!inner(household_id)')
+          .eq('items.household_id', householdId),
+      ])
+      if (itemsRes.error) throw itemsRes.error
+      setItems(itemsRes.data as unknown as Item[])
 
-    if (statusRes.error) setError(statusRes.error.message)
-    else setStatuses(statusRes.data as unknown as ItemStatus[])
-
-    setLoading(false)
+      if (statusRes.error) throw statusRes.error
+      setStatuses(statusRes.data as unknown as ItemStatus[])
+    } catch (err) {
+      // A thrown network error (offline, DNS, blocked host) must not leave
+      // the app stuck on a loading spinner forever.
+      setError(err instanceof Error ? err.message : 'Failed to load items')
+    } finally {
+      setLoading(false)
+    }
   }, [householdId])
 
   React.useEffect(() => {

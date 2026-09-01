@@ -14,9 +14,24 @@ categories and repeat rules — one model, one week view, one recurring engine.
 ## Stack
 
 - Vite + React + TypeScript + Tailwind + hand-rolled shadcn/ui-style components
-- Supabase (Postgres, Auth, RLS) — no Realtime, fetch-on-open instead
+- Supabase (Postgres, RLS) — no Realtime, fetch-on-open instead
 - vite-plugin-pwa for the offline app shell + iOS home-screen install
 - Gemini (`gemini-2.5-flash`) via a Supabase Edge Function for Quick Add
+
+## No sign-in, by design
+
+There's no login of any kind — no accounts, no passwords. On first open the
+app asks you to name your household and add each person (you, your partner,
+the kids); after that, opening the app on any device just asks "who's this?"
+once (saved to that device) so items get attributed to the right person.
+
+This is a deliberate trade-off: the database is protected only by RLS
+policies that allow full read/write to anyone holding the app's URL and
+Supabase anon key — there is no per-user access boundary. That's the right
+call for a private, two-person household app and the wrong call for anything
+with more than a handful of trusted users. See
+`supabase/migrations/0003_remove_auth_open_access.sql` for exactly what that
+opens up.
 
 ## Setup
 
@@ -39,8 +54,8 @@ categories and repeat rules — one model, one week view, one recurring engine.
    npm install
    npm run dev
    ```
-6. **Sign up**, then create a household (or join one with the invite code —
-   the household's UUID — the first parent shares with the second).
+6. **Open the app**, name your household and add yourself. Open the same URL
+   on your partner's phone and add them too from the "who's this?" screen.
 7. **Add the kids** as household members from the "+ Person" button in the
    header so they show up in the "Who" picker and in Quick Add.
 
@@ -63,22 +78,24 @@ src/
     types.ts, database.types.ts
   hooks/
     useItems.ts           — fetch-on-open + focus/visibilitychange refetch, optimistic writes
-    useHouseholdMembers.ts
+    useCurrentPerson.ts    — "who's using this device" (localStorage, attribution only)
+  contexts/
+    HouseholdContext.tsx   — loads the one household + its members
   components/
     WeekView.tsx, MonthView.tsx, DaySheet.tsx
     AddEditSheet.tsx       — manual add/edit, repeat rule builder, subtasks
     QuickAddBar.tsx        — calls the quick-add Edge Function, confirm-before-write
     NeedsAttentionStrip.tsx
   pages/
-    SignIn.tsx, Onboarding.tsx, Planner.tsx
+    SetupHousehold.tsx, WhoAreYou.tsx, Planner.tsx
 supabase/
-  migrations/0001_init.sql — households, profiles, items, item_status, RLS
+  migrations/              — households, profiles, items, item_status, RLS (see 0003 re: open access)
   functions/quick-add/      — Gemini parse (server-side key only)
 ```
 
 ## Build order this followed
 
-1. Auth + household + profiles + RLS
+1. Household + profiles + RLS (later reworked to remove auth entirely — see above)
 2. `items` table + Add/Edit sheet + Week view (one-offs only)
 3. Recurring engine + Month calendar view
 4. `item_status`: chore completion and skip, per date
@@ -94,9 +111,8 @@ Developer Platform is the next step, not part of this build).
 ## Notes on modeling choices
 
 - `profiles` represents every household member who can be assigned an item —
-  not just the two parents who log in. `user_id` is set for a member with an
-  account and `null` for one without (the kids), so "Emma" is assignable via
-  `who` exactly like "Dad" is.
+  parents and kids alike, all just rows in the same table, so "Emma" is
+  assignable via `who` exactly like "Dad" is.
 - Editing a single occurrence of a repeating item is v1-scoped to: skip that
   date (`item_status = 'skipped'`) and, if needed, add a one-off in its
   place. True per-instance editing is a deliberate later enhancement.

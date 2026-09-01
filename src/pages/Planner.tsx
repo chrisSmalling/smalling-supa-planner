@@ -1,7 +1,6 @@
 import * as React from 'react'
-import { useAuth } from '@/contexts/AuthContext'
+import { useHousehold } from '@/contexts/HouseholdContext'
 import { useItems } from '@/hooks/useItems'
-import { useHouseholdMembers } from '@/hooks/useHouseholdMembers'
 import { WeekView } from '@/components/WeekView'
 import { MonthView } from '@/components/MonthView'
 import { AddEditSheet } from '@/components/AddEditSheet'
@@ -10,15 +9,19 @@ import { NeedsAttentionStrip } from '@/components/NeedsAttentionStrip'
 import { AddMemberButton } from '@/components/AddMemberButton'
 import { Button } from '@/components/ui/button'
 import { todayISO } from '@/lib/dateUtils'
-import type { Item, NewItem } from '@/lib/types'
+import type { Item, NewItem, Profile } from '@/lib/types'
 
 type ViewMode = 'week' | 'month'
 type SheetState = { item: Item | null; occurrenceDate?: string; defaultDate: string } | null
 
-export function Planner() {
-  const { profile, signOut } = useAuth()
-  const { members, refresh: refreshMembers } = useHouseholdMembers()
-  const itemsApi = useItems(profile?.household_id ?? null)
+interface PlannerProps {
+  currentPerson: Profile
+  onSwitchPerson: () => void
+}
+
+export function Planner({ currentPerson, onSwitchPerson }: PlannerProps) {
+  const { household, members, refresh: refreshMembers } = useHousehold()
+  const itemsApi = useItems(household?.id ?? null)
   const [view, setView] = React.useState<ViewMode>('week')
   const [sheet, setSheet] = React.useState<SheetState>(null)
 
@@ -34,7 +37,7 @@ export function Planner() {
     if (sheet?.item) {
       await itemsApi.updateItem(sheet.item.id, input)
     } else {
-      await itemsApi.createItem(input, profile?.id ?? null)
+      await itemsApi.createItem(input, currentPerson.id)
     }
   }
 
@@ -57,9 +60,9 @@ export function Planner() {
               Month
             </button>
           </div>
-          <AddMemberButton onAdded={refreshMembers} />
-          <Button variant="ghost" size="sm" onClick={signOut}>
-            Sign out
+          <AddMemberButton householdId={household?.id ?? null} onAdded={refreshMembers} />
+          <Button variant="ghost" size="sm" onClick={onSwitchPerson}>
+            {currentPerson.display_name}
           </Button>
         </div>
       </header>
@@ -69,7 +72,7 @@ export function Planner() {
           members={members}
           onConfirm={async (parsedItems) => {
             for (const input of parsedItems) {
-              await itemsApi.createItem(input, profile?.id ?? null)
+              await itemsApi.createItem(input, currentPerson.id)
             }
           }}
         />
@@ -89,7 +92,7 @@ export function Planner() {
             statuses={itemsApi.statuses}
             members={members}
             onToggleDone={(item, date, done) =>
-              itemsApi.setOccurrenceStatus(item.id, date, done ? 'done' : null, profile?.id ?? null)
+              itemsApi.setOccurrenceStatus(item.id, date, done ? 'done' : null, currentPerson.id)
             }
             onItemClick={openEdit}
             onAddForDate={openCreate}
@@ -100,7 +103,7 @@ export function Planner() {
             statuses={itemsApi.statuses}
             members={members}
             onToggleDone={(item, date, done) =>
-              itemsApi.setOccurrenceStatus(item.id, date, done ? 'done' : null, profile?.id ?? null)
+              itemsApi.setOccurrenceStatus(item.id, date, done ? 'done' : null, currentPerson.id)
             }
             onItemClick={openEdit}
             onAddForDate={openCreate}
@@ -128,8 +131,7 @@ export function Planner() {
         onDelete={sheet?.item ? async () => itemsApi.deleteItem(sheet.item!.id) : undefined}
         onSkipOccurrence={
           sheet?.item && sheet.occurrenceDate
-            ? async () =>
-                itemsApi.setOccurrenceStatus(sheet.item!.id, sheet.occurrenceDate!, 'skipped', profile?.id ?? null)
+            ? async () => itemsApi.setOccurrenceStatus(sheet.item!.id, sheet.occurrenceDate!, 'skipped', currentPerson.id)
             : undefined
         }
       />

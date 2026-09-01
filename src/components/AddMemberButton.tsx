@@ -5,17 +5,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { supabase } from '@/lib/supabase'
 
-/** Adds a household member with no login of their own — a kid, so they can be assigned items. */
-export function AddMemberButton({ onAdded }: { onAdded: () => void }) {
+/** Adds a household member (e.g. a kid) so they can be assigned items via `who`. */
+export function AddMemberButton({ householdId, onAdded }: { householdId: string | null; onAdded: () => void }) {
   const [open, setOpen] = React.useState(false)
   const [name, setName] = React.useState('')
   const [busy, setBusy] = React.useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!householdId) return
     setBusy(true)
     try {
-      const { error } = await supabase.rpc('add_household_member', { display_name: name })
+      const { error } = await supabase.from('profiles').insert({ household_id: householdId, display_name: name })
       if (!error) {
         setName('')
         setOpen(false)
