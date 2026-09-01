@@ -21,9 +21,9 @@ categories and repeat rules — one model, one week view, one recurring engine.
 ## Setup
 
 1. **Create a Supabase project** at supabase.com.
-2. **Run the migration**: `supabase link --project-ref <ref>` then
-   `supabase db push` (or paste `supabase/migrations/0001_init.sql` into the
-   SQL editor).
+2. **Run the migrations**: `supabase link --project-ref <ref>` then
+   `supabase db push` (or paste `supabase/migrations/*.sql`, in order, into
+   the SQL editor).
 3. **Copy `.env.example` to `.env`** and fill in `VITE_SUPABASE_URL` /
    `VITE_SUPABASE_ANON_KEY` from your project's API settings.
 4. **Deploy the Quick Add function**:
@@ -31,6 +31,8 @@ categories and repeat rules — one model, one week view, one recurring engine.
    supabase functions deploy quick-add
    supabase secrets set GEMINI_API_KEY=your-gemini-key
    ```
+   The function reads either `GEMINI_API_KEY` or `Gemini-api` as the secret
+   name, so either works.
    Get a free Gemini API key at [aistudio.google.com](https://aistudio.google.com/apikey).
 5. **Install and run**:
    ```

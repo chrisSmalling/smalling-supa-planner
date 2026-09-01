@@ -83,9 +83,10 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const apiKey = Deno.env.get('GEMINI_API_KEY')
+    // Accept either secret name so this works with a key set up under either.
+    const apiKey = Deno.env.get('GEMINI_API_KEY') ?? Deno.env.get('Gemini-api')
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY is not configured' }), {
+      return new Response(JSON.stringify({ error: 'Gemini API key is not configured' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
