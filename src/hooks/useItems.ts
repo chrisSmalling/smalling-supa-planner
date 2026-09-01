@@ -165,5 +165,18 @@ export function useItems(householdId: string | null) {
     [],
   )
 
-  return { items, statuses, loading, error, refresh, createItem, updateItem, deleteItem, setOccurrenceStatus }
+  const clearError = React.useCallback(() => setError(null), [])
+
+  return {
+    items,
+    statuses,
+    loading,
+    error,
+    refresh,
+    createItem,
+    updateItem,
+    deleteItem,
+    setOccurrenceStatus,
+    clearError,
+  }
 }

@@ -32,6 +32,29 @@
     --cat-milestone: 45 93% 47%;
     --cat-note: 215 16% 57%;
   }
+
+  /* System dark mode (iOS PWAs follow the device setting, no in-app toggle needed). */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: 222 47% 6%;
+      --foreground: 210 20% 96%;
+      --card: 222 40% 10%;
+      --card-foreground: 210 20% 96%;
+      --primary: 210 20% 92%;
+      --primary-foreground: 222 47% 11%;
+      --secondary: 217 25% 16%;
+      --secondary-foreground: 210 20% 96%;
+      --muted: 217 25% 16%;
+      --muted-foreground: 215 16% 65%;
+      --accent: 217 25% 18%;
+      --accent-foreground: 210 20% 96%;
+      --destructive: 0 72% 58%;
+      --destructive-foreground: 210 20% 96%;
+      --border: 217 20% 20%;
+      --input: 217 20% 20%;
+      --ring: 210 20% 85%;
+    }
+  }
 }
 
 @layer base {

@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { X } from 'lucide-react'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { useItems } from '@/hooks/useItems'
 import { WeekView } from '@/components/WeekView'
@@ -77,6 +78,15 @@ export function Planner({ currentPerson, onSwitchPerson }: PlannerProps) {
           }}
         />
       </div>
+
+      {itemsApi.error && (
+        <div className="mx-4 mt-3 flex items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <span>{itemsApi.error}</span>
+          <button onClick={itemsApi.clearError} aria-label="Dismiss">
+            <X className="h-4 w-4 shrink-0" />
+          </button>
+        </div>
+      )}
 
       <NeedsAttentionStrip
         items={itemsApi.items}
