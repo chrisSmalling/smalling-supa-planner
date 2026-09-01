@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --primary: 222 47% 11%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 210 16% 93%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 16% 93%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 16% 93%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 222 47% 11%;
+    --radius: 0.75rem;
+
+    /* one color per item category, used everywhere an item renders */
+    --cat-activity: 217 91% 60%;
+    --cat-meal: 25 95% 53%;
+    --cat-chore: 142 71% 45%;
+    --cat-project: 262 83% 66%;
+    --cat-appointment: 340 82% 52%;
+    --cat-milestone: 45 93% 47%;
+    --cat-note: 215 16% 57%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    /* iOS: don't let momentum scroll rubber-band the whole app shell */
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground;
+    height: 100%;
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #root {
+    min-height: 100dvh;
+  }
+}

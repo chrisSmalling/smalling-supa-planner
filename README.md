@@ -1,1 +1,100 @@
-# smalling-supa-planner
+# Superplan
+
+A mobile-first PWA for one family's shared weekly planner: activities, meals,
+chores/projects, appointments, and recurring milestones, in a week view and a
+month calendar.
+
+## The one idea everything rests on
+
+There is **one kind of thing: an item.** An item has a date, an optional
+time, a category tag, and an optional repeat rule. A birthday, a monthly
+chore, Saturday soccer, and Tuesday's tacos are all just items with different
+categories and repeat rules — one model, one week view, one recurring engine.
+
+## Stack
+
+- Vite + React + TypeScript + Tailwind + hand-rolled shadcn/ui-style components
+- Supabase (Postgres, Auth, RLS) — no Realtime, fetch-on-open instead
+- vite-plugin-pwa for the offline app shell + iOS home-screen install
+- Gemini (`gemini-2.5-flash`) via a Supabase Edge Function for Quick Add
+
+## Setup
+
+1. **Create a Supabase project** at supabase.com.
+2. **Run the migration**: `supabase link --project-ref <ref>` then
+   `supabase db push` (or paste `supabase/migrations/0001_init.sql` into the
+   SQL editor).
+3. **Copy `.env.example` to `.env`** and fill in `VITE_SUPABASE_URL` /
+   `VITE_SUPABASE_ANON_KEY` from your project's API settings.
+4. **Deploy the Quick Add function**:
+   ```
+   supabase functions deploy quick-add
+   supabase secrets set GEMINI_API_KEY=your-gemini-key
+   ```
+   Get a free Gemini API key at [aistudio.google.com](https://aistudio.google.com/apikey).
+5. **Install and run**:
+   ```
+   npm install
+   npm run dev
+   ```
+6. **Sign up**, then create a household (or join one with the invite code —
+   the household's UUID — the first parent shares with the second).
+7. **Add the kids** as household members from the "+ Person" button in the
+   header so they show up in the "Who" picker and in Quick Add.
+
+## Install to a phone's home screen (iOS)
+
+Open the deployed URL in Safari → Share → Add to Home Screen. The app runs
+standalone with an offline shell and a read-through cache, so the week/month
+views still render the last-known data with no connection. Treat any push
+notification as best-effort — the **Needs attention** strip (14-day
+lookahead + overdue chores) is the real reminder surface.
+
+## Project structure
+
+```
+src/
+  lib/
+    recurrence.ts       — occurrencesInRange(item, from, to): the recurring engine
+    occurrences.ts       — expands items + item_status into per-date occurrences
+    dateUtils.ts          — week/month date arithmetic (WEEK_START lives here)
+    types.ts, database.types.ts
+  hooks/
+    useItems.ts           — fetch-on-open + focus/visibilitychange refetch, optimistic writes
+    useHouseholdMembers.ts
+  components/
+    WeekView.tsx, MonthView.tsx, DaySheet.tsx
+    AddEditSheet.tsx       — manual add/edit, repeat rule builder, subtasks
+    QuickAddBar.tsx        — calls the quick-add Edge Function, confirm-before-write
+    NeedsAttentionStrip.tsx
+  pages/
+    SignIn.tsx, Onboarding.tsx, Planner.tsx
+supabase/
+  migrations/0001_init.sql — households, profiles, items, item_status, RLS
+  functions/quick-add/      — Gemini parse (server-side key only)
+```
+
+## Build order this followed
+
+1. Auth + household + profiles + RLS
+2. `items` table + Add/Edit sheet + Week view (one-offs only)
+3. Recurring engine + Month calendar view
+4. `item_status`: chore completion and skip, per date
+5. Quick Add (Gemini parse with recurrence) + confirm card
+6. Needs-attention strip (lookahead + overdue)
+7. PWA install + offline read cache
+
+**Parked** until the planner earns daily use: Instacart integration for meal
+ingredients (`category = 'meal'` items already exist; a `meal_ingredients`
+child table + a "build this week's list" flow that POSTs to the Instacart
+Developer Platform is the next step, not part of this build).
+
+## Notes on modeling choices
+
+- `profiles` represents every household member who can be assigned an item —
+  not just the two parents who log in. `user_id` is set for a member with an
+  account and `null` for one without (the kids), so "Emma" is assignable via
+  `who` exactly like "Dad" is.
+- Editing a single occurrence of a repeating item is v1-scoped to: skip that
+  date (`item_status = 'skipped'`) and, if needed, add a one-off in its
+  place. True per-instance editing is a deliberate later enhancement.

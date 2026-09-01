@@ -1,0 +1,141 @@
+// Hand-written to match supabase/migrations/0001_init.sql.
+// Regenerate with `supabase gen types typescript` once a live project exists,
+// then keep this file in sync with any schema changes.
+
+export type Database = {
+  public: {
+    Tables: {
+      households: {
+        Row: { id: string; name: string; created_at: string }
+        Insert: { id?: string; name: string; created_at?: string }
+        Update: { id?: string; name?: string; created_at?: string }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          id: string
+          household_id: string
+          user_id: string | null
+          display_name: string
+          email: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          household_id: string
+          user_id?: string | null
+          display_name: string
+          email?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          household_id?: string
+          user_id?: string | null
+          display_name?: string
+          email?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      items: {
+        Row: {
+          id: string
+          household_id: string
+          title: string
+          category: string
+          starts_on: string
+          start_time: string | null
+          who: string | null
+          notes: string | null
+          subtasks: unknown | null
+          repeat_freq: string
+          repeat_interval: number
+          repeat_weekdays: number[] | null
+          repeat_until: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          household_id: string
+          title: string
+          category: string
+          starts_on: string
+          start_time?: string | null
+          who?: string | null
+          notes?: string | null
+          subtasks?: unknown | null
+          repeat_freq?: string
+          repeat_interval?: number
+          repeat_weekdays?: number[] | null
+          repeat_until?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          household_id?: string
+          title?: string
+          category?: string
+          starts_on?: string
+          start_time?: string | null
+          who?: string | null
+          notes?: string | null
+          subtasks?: unknown | null
+          repeat_freq?: string
+          repeat_interval?: number
+          repeat_weekdays?: number[] | null
+          repeat_until?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      item_status: {
+        Row: {
+          id: string
+          item_id: string
+          occurrence_date: string
+          status: string
+          by: string | null
+          at: string
+        }
+        Insert: {
+          id?: string
+          item_id: string
+          occurrence_date: string
+          status: string
+          by?: string | null
+          at?: string
+        }
+        Update: {
+          id?: string
+          item_id?: string
+          occurrence_date?: string
+          status?: string
+          by?: string | null
+          at?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: Record<string, never>
+    Functions: {
+      create_household: {
+        Args: { household_name: string; display_name: string }
+        Returns: string
+      }
+      join_household: {
+        Args: { target_household_id: string; display_name: string }
+        Returns: string
+      }
+      add_household_member: {
+        Args: { display_name: string }
+        Returns: string
+      }
+    }
+    Enums: Record<string, never>
+    CompositeTypes: Record<string, never>
+  }
+}

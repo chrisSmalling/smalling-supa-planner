@@ -1,0 +1,145 @@
+// Supabase Edge Function (Deno). Parses one Quick Add text entry into structured
+// items via Gemini. The API key lives only in this server-side env var — the
+// client never sees it. Gemini *proposes*; nothing is written to the database
+// here or anywhere else until the user confirms in the app.
+
+const GEMINI_MODEL = 'gemini-2.5-flash'
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
+
+const CATEGORIES = ['activity', 'meal', 'chore', 'project', 'appointment', 'milestone', 'note']
+const REPEAT_FREQS = ['none', 'daily', 'weekly', 'monthly', 'yearly']
+
+const RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          category: { type: 'string', enum: CATEGORIES },
+          title: { type: 'string' },
+          starts_on: { type: 'string', description: 'YYYY-MM-DD' },
+          start_time: { type: 'string', nullable: true, description: 'HH:MM 24h, or null for all-day' },
+          who: { type: 'string', nullable: true },
+          repeat_freq: { type: 'string', enum: REPEAT_FREQS },
+          repeat_interval: { type: 'integer' },
+          repeat_weekdays: { type: 'array', items: { type: 'integer' }, nullable: true },
+          repeat_until: { type: 'string', nullable: true, description: 'YYYY-MM-DD or null' },
+          notes: { type: 'string', nullable: true },
+          flags: { type: 'array', items: { type: 'string' } },
+          confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+        },
+        required: [
+          'category',
+          'title',
+          'starts_on',
+          'start_time',
+          'who',
+          'repeat_freq',
+          'repeat_interval',
+          'repeat_weekdays',
+          'repeat_until',
+          'notes',
+          'flags',
+          'confidence',
+        ],
+      },
+    },
+  },
+  required: ['items'],
+}
+
+function buildPrompt(text: string, today: string, roster: string[]): string {
+  return `You turn a family planner's freeform quick-add text into structured calendar items.
+
+Today's date is ${today} (YYYY-MM-DD). The household roster (valid values for "who") is: ${roster.join(', ') || '(none yet)'}.
+
+Rules:
+- Split the input into one item per distinct thing being planned.
+- category is one of: activity, meal, chore, project, appointment, milestone, note.
+- starts_on is always a concrete YYYY-MM-DD date, resolved relative to today. A bare weekday ("Saturday", "Tuesday") means the next occurrence of that weekday on or after today.
+- start_time is 24h "HH:MM", or null for anything that isn't a specific time (all-day).
+- Detect recurrence phrases and set repeat_freq/repeat_interval/repeat_weekdays/repeat_until accordingly:
+  - "every Saturday" -> weekly, repeat_weekdays [6] (0=Sun..6=Sat).
+  - "every other week" -> weekly, repeat_interval 2.
+  - "on the 5th of every month" -> monthly, starts_on the next occurrence of the 5th.
+  - "my birthday is January 14" / a recurring anniversary -> yearly, category milestone, starts_on the next Jan 14; if a birth year is stated, use that year as starts_on's year instead so age can be computed.
+  - Nothing recurrence-related mentioned -> repeat_freq "none", repeat_interval 1, repeat_weekdays null, repeat_until null.
+- who: match a name to the roster case-insensitively; null if no one is named or the name isn't on the roster.
+- flags: short phrases naming anything ambiguous you had to guess at (e.g. "assumed this year", "no time given"). Empty array if nothing was ambiguous.
+- confidence: "high" | "medium" | "low" for how sure you are you parsed this item correctly.
+- Output ONLY the JSON object matching the schema. No prose, no markdown fences.
+
+Quick add text: "${text}"`
+}
+
+Deno.serve(async (req: Request) => {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  }
+
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+
+  try {
+    const apiKey = Deno.env.get('GEMINI_API_KEY')
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY is not configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const { text, roster } = (await req.json()) as { text?: string; roster?: string[] }
+    if (!text || !text.trim()) {
+      return new Response(JSON.stringify({ error: 'text is required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const today = new Date().toISOString().slice(0, 10)
+    const prompt = buildPrompt(text, today, roster ?? [])
+
+    const geminiRes = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: RESPONSE_SCHEMA,
+          temperature: 0.2,
+        },
+      }),
+    })
+
+    if (!geminiRes.ok) {
+      const detail = await geminiRes.text()
+      return new Response(JSON.stringify({ error: `Gemini request failed: ${detail}` }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const geminiData = await geminiRes.json()
+    const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!raw) {
+      return new Response(JSON.stringify({ error: 'Gemini returned no content' }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const parsed = JSON.parse(raw)
+    return new Response(JSON.stringify(parsed), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Unknown error' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+})
