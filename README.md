@@ -16,7 +16,7 @@ categories and repeat rules — one model, one week view, one recurring engine.
 - Vite + React + TypeScript + Tailwind + hand-rolled shadcn/ui-style components
 - Supabase (Postgres, RLS) — no Realtime, fetch-on-open instead
 - vite-plugin-pwa for the offline app shell + iOS home-screen install
-- Gemini (`gemini-2.5-flash`) via a Supabase Edge Function for Quick Add
+- Gemini (`gemini-3.6-flash`) via a Supabase Edge Function for Quick Add
 
 ## No sign-in, by design
 

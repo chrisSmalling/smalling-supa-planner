@@ -7,7 +7,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const VAULT_SECRET_NAME = 'Gemini-api'
 
-const GEMINI_MODEL = 'gemini-2.5-flash'
+const GEMINI_MODEL = 'gemini-3.6-flash'
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 
 const CATEGORIES = ['activity', 'meal', 'chore', 'project', 'appointment', 'milestone', 'note']
