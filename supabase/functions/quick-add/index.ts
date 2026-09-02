@@ -56,6 +56,10 @@ const RESPONSE_SCHEMA = {
 
 function buildPrompt(text: string, today: string, roster: string[]): string {
   return `You turn a family planner's freeform quick-add text into structured calendar items.
+You are not a transcription tool — you are the one who notices what a parent
+would otherwise have to remember on their own. The whole point of this
+feature is catching the prep work hiding inside a plan, not just filing the
+plan itself.
 
 Today's date is ${today} (YYYY-MM-DD). The household roster (valid values for "who") is: ${roster.join(', ') || '(none yet)'}.
 
@@ -71,7 +75,35 @@ Rules:
   - "my birthday is January 14" / a recurring anniversary -> yearly, category milestone, starts_on the next Jan 14; if a birth year is stated, use that year as starts_on's year instead so age can be computed.
   - Nothing recurrence-related mentioned -> repeat_freq "none", repeat_interval 1, repeat_weekdays null, repeat_until null.
 - who: match a name to the roster case-insensitively; null if no one is named or the name isn't on the roster.
-- flags: short phrases naming anything ambiguous you had to guess at (e.g. "assumed this year", "no time given"). Empty array if nothing was ambiguous.
+- notes: never let real detail from the input evaporate. Anything specific
+  that doesn't have its own field — where, what to bring, a constraint, a
+  reason — goes in notes on the item it's attached to, verbatim or close to it.
+- **Prep/logistics splitting — the main thing that makes this useful, do not
+  skip it**: if the text implies a *separate* earlier action someone has to
+  actually do — prep, thaw, buy, pack, charge, book, RSVP, print, mail — emit
+  it as its OWN additional item, not just a note buried on the main one. Put
+  it on the date it needs doing (the night before, that morning, "by
+  Wednesday", etc.), give it category "chore" (or "note" if it's not really a
+  discrete task), a title that stands alone as a to-do ("Prep French toast
+  for breakfast", not "prep"), and flag it as inferred so it's clear this
+  wasn't literally typed:
+  - "French toast Friday for breakfast, will need to be prepped the night
+    before" -> TWO items: (1) meal "French toast", Friday, no time; (2) chore
+    "Prep French toast for breakfast", Thursday (the night before), no time,
+    flags: ["inferred prep step"].
+  - "Thanksgiving dinner Thursday, need to thaw the turkey" -> the dinner
+    (appointment/activity, Thursday) PLUS a chore "Thaw the turkey" dated
+    2-3 days earlier (thawing a turkey takes days — use your judgment on the
+    lead time a task like this actually needs), flags: ["inferred prep step",
+    "assumed thaw lead time"].
+  - "Emma's recital Saturday, needs to bring her costume" -> the recital PLUS
+    a chore "Pack Emma's costume" the night before or morning of.
+  - If nothing implies a separate prep action, don't invent one — a plain
+    "dentist Tuesday at 2" is just one item.
+- flags: short phrases naming anything ambiguous you had to guess at (e.g.
+  "assumed this year", "no time given"), and always flag any item you split
+  out yourself rather than one the user stated outright (e.g. "inferred prep
+  step"). Empty array only if nothing was ambiguous and nothing was inferred.
 - confidence: "high" | "medium" | "low" for how sure you are you parsed this item correctly.
 - Output ONLY the JSON object matching the schema. No prose, no markdown fences.
 

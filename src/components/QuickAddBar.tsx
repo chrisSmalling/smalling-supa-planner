@@ -99,31 +99,40 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
         </div>
 
         <div className="space-y-1.5">
-          {parsed.map((p, i) => (
-            <label key={i} className="flex items-start gap-2 rounded-lg border p-2 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={included[i]}
-                onChange={(e) => setIncluded((prev) => prev.map((v, idx) => (idx === i ? e.target.checked : v)))}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 font-medium">
-                  <CategoryDot category={p.category} />
-                  {p.title}
+          {parsed.map((p, i) => {
+            const inferredFlags = p.flags.filter((f) => /inferred/i.test(f))
+            const otherFlags = p.flags.filter((f) => !/inferred/i.test(f))
+            return (
+              <label key={i} className="flex items-start gap-2 rounded-lg border p-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={included[i]}
+                  onChange={(e) => setIncluded((prev) => prev.map((v, idx) => (idx === i ? e.target.checked : v)))}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 font-medium">
+                    <CategoryDot category={p.category} />
+                    {p.title}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {CATEGORY_LABEL[p.category]} · {formatDisplayDate(p.starts_on)}
+                    {p.start_time && ` · ${formatTime(p.start_time)}`}
+                    {p.who && ` · ${p.who}`}
+                    {p.repeat_freq !== 'none' && ` · repeats ${p.repeat_freq}`}
+                  </p>
+                  {inferredFlags.length > 0 && (
+                    <p className="mt-0.5 text-xs font-medium text-category-chore">
+                      ✨ Added automatically — you didn't type this part
+                    </p>
+                  )}
+                  {otherFlags.length > 0 && (
+                    <p className="mt-0.5 text-xs text-amber-600">⚠ {otherFlags.join(', ')}</p>
+                  )}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {CATEGORY_LABEL[p.category]} · {formatDisplayDate(p.starts_on)}
-                  {p.start_time && ` · ${formatTime(p.start_time)}`}
-                  {p.who && ` · ${p.who}`}
-                  {p.repeat_freq !== 'none' && ` · repeats ${p.repeat_freq}`}
-                </p>
-                {p.flags.length > 0 && (
-                  <p className="mt-0.5 text-xs text-amber-600">⚠ {p.flags.join(', ')}</p>
-                )}
-              </div>
-            </label>
-          ))}
+              </label>
+            )
+          })}
         </div>
 
         <Button className="w-full" onClick={handleConfirm} disabled={!included.some(Boolean)}>
