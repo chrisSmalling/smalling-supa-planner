@@ -21,7 +21,8 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
   const [text, setText] = React.useState('')
   const [parsed, setParsed] = React.useState<QuickAddParsedItem[] | null>(null)
   const [included, setIncluded] = React.useState<boolean[]>([])
-  const [locationMatches, setLocationMatches] = React.useState<(GeocodeMatch | null)[]>([])
+  // undefined = still resolving, null = resolved but nothing found.
+  const [locationMatches, setLocationMatches] = React.useState<(GeocodeMatch | null | undefined)[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -40,16 +41,20 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
         setError("Couldn't find anything to add — try rephrasing.")
         return
       }
-      // Resolve locations before showing the confirm card — a venue name
-      // like "LA Fitness, New Tampa" is ambiguous on its own, so show what
-      // it actually matched (a real address) instead of trusting the raw
-      // text silently.
-      const matches = await Promise.all(
-        items.map((p) => (p.location ? geocodeLocation(p.location).catch(() => null) : Promise.resolve(null))),
-      )
-      setLocationMatches(matches)
       setParsed(items)
       setIncluded(items.map(() => true))
+      // Show the card immediately, then resolve each location in the
+      // background and fill it in as it comes back — geocoding shouldn't
+      // hold up seeing what Gemini found. A venue name like "LA Fitness,
+      // New Tampa" is ambiguous on its own, so once resolved this shows
+      // what it actually matched instead of trusting the raw text silently.
+      setLocationMatches(items.map((p) => (p.location ? undefined : null)))
+      items.forEach((p, i) => {
+        if (!p.location) return
+        geocodeLocation(p.location)
+          .then((match) => setLocationMatches((prev) => prev.map((m, idx) => (idx === i ? match : m))))
+          .catch(() => setLocationMatches((prev) => prev.map((m, idx) => (idx === i ? null : m))))
+      })
     } catch (err) {
       // supabase-js's default error.message for a non-2xx response is just
       // "Edge Function returned a non-2xx status code" — pull the actual
@@ -148,7 +153,9 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
                   </p>
                   {p.location && (
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {locationMatches[i] ? (
+                      {locationMatches[i] === undefined ? (
+                        '📍 Locating…'
+                      ) : locationMatches[i] ? (
                         <>
                           📍 {locationMatches[i]!.displayName ?? p.location}
                           {locationMatches[i]!.approximate && ' (approximate — city center)'}

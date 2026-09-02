@@ -26,6 +26,8 @@ interface Match {
   displayName: string
 }
 
+const FETCH_TIMEOUT_MS = 4000
+
 function normalize(query: string): string {
   return query.trim().toLowerCase()
 }
@@ -40,9 +42,24 @@ function withoutStreetPart(query: string): string | null {
   return parts.slice(1).join(', ')
 }
 
+/** Census only geocodes structured mailing addresses — a venue name like "LA Fitness, New Tampa" will never match, so skip straight past it unless the query actually starts with a house number. */
+function looksLikeStreetAddress(query: string): boolean {
+  return /^\d+\s/.test(query.trim())
+}
+
+async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 async function lookupNominatim(q: string): Promise<Match | null> {
   const url = `${NOMINATIM_URL}?format=json&limit=1&q=${encodeURIComponent(q)}`
-  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
+  const res = await fetchWithTimeout(url, { headers: { 'User-Agent': USER_AGENT } })
   if (!res.ok) {
     const detail = await res.text()
     throw new Error(`Nominatim request failed (${res.status}): ${detail}`)
@@ -55,7 +72,7 @@ async function lookupNominatim(q: string): Promise<Match | null> {
 
 async function lookupCensus(q: string): Promise<Match | null> {
   const url = `${CENSUS_URL}?address=${encodeURIComponent(q)}&benchmark=Public_AR_Current&format=json`
-  const res = await fetch(url)
+  const res = await fetchWithTimeout(url)
   if (!res.ok) {
     const detail = await res.text()
     throw new Error(`Census geocoder failed (${res.status}): ${detail}`)
@@ -115,9 +132,10 @@ Deno.serve(async (req: Request) => {
       // A specific house number is often missing from OSM's point data even
       // when the surrounding streets are well-mapped. The Census geocoder
       // interpolates along known address ranges instead, so it can resolve
-      // exactly this case for US addresses — worth a second opinion before
-      // giving up on precision.
-      if (!match) {
+      // exactly this case for US addresses — but only for queries that are
+      // actually a street address; it will never match a venue name, so
+      // skip it there instead of burning a slow, guaranteed-empty request.
+      if (!match && looksLikeStreetAddress(query)) {
         match = await lookupCensus(query).catch((err) => {
           console.error('Census geocoder lookup failed:', err instanceof Error ? err.message : err)
           return null
