@@ -19,8 +19,15 @@ export interface GeocodeMatch extends Coords {
  * nothing was found or the location text is empty; throws with a readable
  * message on an actual failure (network, upstream error) so callers can
  * surface it.
+ *
+ * `near` (the household's home coordinates) restricts the first search
+ * attempt to a home-region box before falling back to an unrestricted
+ * global search — a generic name ("Playground", "Chipotle") otherwise has
+ * no geography of its own and can match a same-named place anywhere on
+ * Earth. Omit it only when there's no home location yet (e.g. geocoding the
+ * home address itself in Settings).
  */
-export async function geocodeLocation(query: string): Promise<GeocodeMatch | null> {
+export async function geocodeLocation(query: string, near?: Coords): Promise<GeocodeMatch | null> {
   if (!query.trim()) return null
   try {
     const { data, error } = await supabase.functions.invoke<{
@@ -28,7 +35,7 @@ export async function geocodeLocation(query: string): Promise<GeocodeMatch | nul
       lng: number | null
       displayName: string | null
       approximate: boolean
-    }>('geocode', { body: { query } })
+    }>('geocode', { body: { query, near } })
     if (error) throw error
     if (data?.lat == null || data?.lng == null) return null
     return { lat: data.lat, lng: data.lng, displayName: data.displayName, approximate: data.approximate }

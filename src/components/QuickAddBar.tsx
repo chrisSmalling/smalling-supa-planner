@@ -7,6 +7,7 @@ import { CategoryDot } from '@/components/ui/badge'
 import { supabase } from '@/lib/supabase'
 import { geocodeLocation } from '@/lib/geocode'
 import type { GeocodeMatch } from '@/lib/geocode'
+import { useHousehold } from '@/contexts/HouseholdContext'
 import { formatDisplayDate, formatTime } from '@/lib/dateUtils'
 import { CATEGORY_LABEL } from '@/lib/types'
 import type { NewItem, Profile } from '@/lib/types'
@@ -18,6 +19,11 @@ interface QuickAddBarProps {
 }
 
 export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
+  const { household } = useHousehold()
+  const homeCoords =
+    household?.home_lat != null && household?.home_lng != null
+      ? { lat: household.home_lat, lng: household.home_lng }
+      : undefined
   const [text, setText] = React.useState('')
   const [parsed, setParsed] = React.useState<QuickAddParsedItem[] | null>(null)
   const [included, setIncluded] = React.useState<boolean[]>([])
@@ -51,7 +57,7 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
       setLocationMatches(items.map((p) => (p.location ? undefined : null)))
       items.forEach((p, i) => {
         if (!p.location) return
-        geocodeLocation(p.location)
+        geocodeLocation(p.location, homeCoords)
           .then((match) => setLocationMatches((prev) => prev.map((m, idx) => (idx === i ? match : m))))
           .catch(() => setLocationMatches((prev) => prev.map((m, idx) => (idx === i ? null : m))))
       })

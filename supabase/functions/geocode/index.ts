@@ -1,15 +1,26 @@
 // Supabase Edge Function (Deno). Turns a free-text location ("Magic Kingdom,
 // Orlando, FL") into a lat/lng — no API key, no billing. Tries, in order:
-//   1. Nominatim (OpenStreetMap) on the exact text.
-//   2. The US Census Bureau's geocoder, which interpolates an exact house
+//   1. Nominatim (OpenStreetMap), restricted to a box around the household's
+//      home (if known) — a generic term like "Playground" or "Chipotle" has
+//      no geography of its own, so without this it can match any
+//      same-named place on Earth (confirmed: "Playground" -> Wisconsin,
+//      "Chipotle" -> Colorado, for a Florida household — all three states
+//      away). Most quick-add locations are local, so try local first.
+//   2. Nominatim again with no geographic restriction, for a query that
+//      genuinely refers to somewhere far away (a trip, a relative's house)
+//      and so isn't found in the home-region box.
+//   3. The US Census Bureau's geocoder, which interpolates an exact house
 //      number along a street from TIGER/Line address ranges even when OSM
 //      has no point for it — US addresses only, but free and unlimited.
-//   3. Nominatim again with the street part dropped (city/state/zip only),
+//   4. Nominatim again with the street part dropped (city/state/zip only),
 //      flagged "approximate" — better than reporting "not found" for an
 //      address that's perfectly real but under-mapped.
 // Results are cached in geocode_cache (keyed by normalized query) so the
 // same address never re-triggers this chain, per Nominatim's usage policy
 // (it's a shared public service, not meant for repeated identical lookups).
+// The cache key doesn't include the home-bias point — fine for a
+// single-household app where that point never changes, but would need
+// revisiting if this ever served more than one household.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
@@ -19,10 +30,16 @@ const CENSUS_URL = 'https://geocoding.geo.census.gov/geocoder/locations/onelinea
 // application (and ideally a way to contact its maintainer) — anonymous or
 // browser-default User-Agents get blocked.
 const USER_AGENT = 'Superplan-Household-Planner/1.0 (+https://github.com/chrisSmalling/smalling-supa-planner)'
+// ~1 degree of lat/lng is roughly 70 miles — a generous day-trip radius for
+// "local" without being so wide it starts pulling in other metro areas.
+const HOME_BIAS_DEGREES = 1
 
-interface Match {
+interface Coords {
   lat: number
   lng: number
+}
+
+interface Match extends Coords {
   displayName: string
 }
 
@@ -57,8 +74,22 @@ async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Respon
   }
 }
 
-async function lookupNominatim(q: string): Promise<Match | null> {
-  const url = `${NOMINATIM_URL}?format=json&limit=1&q=${encodeURIComponent(q)}`
+/**
+ * `near` + `bounded` restrict results to a box around a point rather than
+ * just nudging the ranking — Nominatim's plain (unbounded) `viewbox` bias is
+ * too weak to beat a more "important" same-named place across the country,
+ * which is exactly the failure mode this exists to fix.
+ */
+async function lookupNominatim(q: string, near?: Coords, bounded?: boolean): Promise<Match | null> {
+  let url = `${NOMINATIM_URL}?format=json&limit=1&q=${encodeURIComponent(q)}`
+  if (near) {
+    const left = near.lng - HOME_BIAS_DEGREES
+    const right = near.lng + HOME_BIAS_DEGREES
+    const top = near.lat + HOME_BIAS_DEGREES
+    const bottom = near.lat - HOME_BIAS_DEGREES
+    url += `&viewbox=${left},${top},${right},${bottom}`
+    if (bounded) url += '&bounded=1'
+  }
   const res = await fetchWithTimeout(url, { headers: { 'User-Agent': USER_AGENT } })
   if (!res.ok) {
     const detail = await res.text()
@@ -100,7 +131,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { query } = (await req.json()) as { query?: string }
+    const { query, near } = (await req.json()) as { query?: string; near?: Coords }
     if (!query || !query.trim()) {
       return new Response(JSON.stringify({ error: 'query is required' }), {
         status: 400,
@@ -127,7 +158,16 @@ Deno.serve(async (req: Request) => {
     let match: Match | null
     let approximate = false
     try {
-      match = await lookupNominatim(query)
+      // Prefer a match near home first — most quick-add locations are local,
+      // and a generic name (a park, a gym, a chain restaurant) has no
+      // geography of its own to disambiguate it otherwise.
+      match = near ? await lookupNominatim(query, near, true) : null
+
+      // Nothing local — this might genuinely be somewhere far away (a trip,
+      // a relative's address), so search without restriction.
+      if (!match) {
+        match = await lookupNominatim(query)
+      }
 
       // A specific house number is often missing from OSM's point data even
       // when the surrounding streets are well-mapped. The Census geocoder

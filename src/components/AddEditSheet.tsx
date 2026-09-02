@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { googleMapsSearchUrl } from '@/lib/maps'
 import { geocodeLocation } from '@/lib/geocode'
 import type { GeocodeMatch } from '@/lib/geocode'
+import { useHousehold } from '@/contexts/HouseholdContext'
 import { CATEGORIES, CATEGORY_LABEL } from '@/lib/types'
 import type { Category, Item, NewItem, Profile, RepeatFreq, Subtask } from '@/lib/types'
 
@@ -62,6 +63,11 @@ export function AddEditSheet({
   onDelete,
   onSkipOccurrence,
 }: AddEditSheetProps) {
+  const { household } = useHousehold()
+  const homeCoords =
+    household?.home_lat != null && household?.home_lng != null
+      ? { lat: household.home_lat, lng: household.home_lng }
+      : undefined
   const [form, setForm] = React.useState<NewItem>(() => item ?? emptyForm(defaultDate))
   const [saving, setSaving] = React.useState(false)
   const [locationMatch, setLocationMatch] = React.useState<GeocodeMatch | null>(null)
@@ -82,7 +88,7 @@ export function AddEditSheet({
     lastCheckedLocation.current = trimmed
     setLocationChecking(true)
     try {
-      const found = await geocodeLocation(trimmed)
+      const found = await geocodeLocation(trimmed, homeCoords)
       // Only apply if the field hasn't changed again while this was in flight.
       if (lastCheckedLocation.current === trimmed) setLocationMatch(found)
     } catch {
@@ -109,7 +115,7 @@ export function AddEditSheet({
         // Best-effort: an item is still worth saving even if this address
         // doesn't resolve to coordinates — it just won't get a leave-by time.
         try {
-          const coords = await geocodeLocation(form.location)
+          const coords = await geocodeLocation(form.location, homeCoords)
           toSave = { ...form, location_lat: coords?.lat ?? null, location_lng: coords?.lng ?? null }
         } catch (err) {
           console.error('Failed to geocode location:', err)
