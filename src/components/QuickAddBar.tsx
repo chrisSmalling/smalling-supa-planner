@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { CategoryDot } from '@/components/ui/badge'
 import { supabase } from '@/lib/supabase'
 import { geocodeLocation } from '@/lib/geocode'
+import type { GeocodeMatch } from '@/lib/geocode'
 import { formatDisplayDate, formatTime } from '@/lib/dateUtils'
 import { CATEGORY_LABEL } from '@/lib/types'
 import type { NewItem, Profile } from '@/lib/types'
@@ -20,6 +21,7 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
   const [text, setText] = React.useState('')
   const [parsed, setParsed] = React.useState<QuickAddParsedItem[] | null>(null)
   const [included, setIncluded] = React.useState<boolean[]>([])
+  const [locationMatches, setLocationMatches] = React.useState<(GeocodeMatch | null)[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -38,6 +40,14 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
         setError("Couldn't find anything to add — try rephrasing.")
         return
       }
+      // Resolve locations before showing the confirm card — a venue name
+      // like "LA Fitness, New Tampa" is ambiguous on its own, so show what
+      // it actually matched (a real address) instead of trusting the raw
+      // text silently.
+      const matches = await Promise.all(
+        items.map((p) => (p.location ? geocodeLocation(p.location).catch(() => null) : Promise.resolve(null))),
+      )
+      setLocationMatches(matches)
       setParsed(items)
       setIncluded(items.map(() => true))
     } catch (err) {
@@ -67,34 +77,31 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
 
   async function handleConfirm() {
     if (!parsed) return
-    const toInsert: NewItem[] = await Promise.all(
-      parsed
-        .filter((_, i) => included[i])
-        .map(async (p) => {
-          // Best-effort: a failed lookup shouldn't block adding the item, it
-          // just won't get a leave-by time.
-          const coords = p.location ? await geocodeLocation(p.location).catch(() => null) : null
-          return {
-            title: p.title,
-            category: p.category,
-            starts_on: p.starts_on,
-            start_time: p.start_time,
-            who: resolveWho(p.who),
-            notes: p.notes,
-            location: p.location,
-            location_lat: coords?.lat ?? null,
-            location_lng: coords?.lng ?? null,
-            subtasks: p.subtasks ? p.subtasks.map((text) => ({ text, done: false })) : null,
-            repeat_freq: p.repeat_freq,
-            repeat_interval: p.repeat_interval,
-            repeat_weekdays: p.repeat_weekdays,
-            repeat_until: p.repeat_until,
-          }
-        }),
-    )
+    const toInsert: NewItem[] = parsed
+      .map((p, i) => ({ p, coords: locationMatches[i], include: included[i] }))
+      .filter(({ include }) => include)
+      .map(({ p, coords }) => {
+        return {
+          title: p.title,
+          category: p.category,
+          starts_on: p.starts_on,
+          start_time: p.start_time,
+          who: resolveWho(p.who),
+          notes: p.notes,
+          location: p.location,
+          location_lat: coords?.lat ?? null,
+          location_lng: coords?.lng ?? null,
+          subtasks: p.subtasks ? p.subtasks.map((text) => ({ text, done: false })) : null,
+          repeat_freq: p.repeat_freq,
+          repeat_interval: p.repeat_interval,
+          repeat_weekdays: p.repeat_weekdays,
+          repeat_until: p.repeat_until,
+        }
+      })
     await onConfirm(toInsert)
     setParsed(null)
     setText('')
+    setLocationMatches([])
   }
 
   if (parsed) {
@@ -104,7 +111,13 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
           <p className="text-sm font-medium">
             I found {parsed.length} thing{parsed.length === 1 ? '' : 's'}
           </p>
-          <button onClick={() => setParsed(null)} aria-label="Cancel">
+          <button
+            onClick={() => {
+              setParsed(null)
+              setLocationMatches([])
+            }}
+            aria-label="Cancel"
+          >
             <X className="h-4 w-4 text-muted-foreground" />
           </button>
         </div>
@@ -133,6 +146,18 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
                     {p.location && ` · ${p.location}`}
                     {p.repeat_freq !== 'none' && ` · repeats ${p.repeat_freq}`}
                   </p>
+                  {p.location && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {locationMatches[i] ? (
+                        <>
+                          📍 {locationMatches[i]!.displayName ?? p.location}
+                          {locationMatches[i]!.approximate && ' (approximate — city center)'}
+                        </>
+                      ) : (
+                        "📍 couldn't verify this location — no leave-by time for it"
+                      )}
+                    </p>
+                  )}
                   {p.subtasks && p.subtasks.length > 0 && (
                     <ul className="mt-0.5 list-inside list-disc text-xs text-muted-foreground">
                       {p.subtasks.map((s, si) => (

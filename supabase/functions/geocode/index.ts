@@ -1,17 +1,30 @@
 // Supabase Edge Function (Deno). Turns a free-text location ("Magic Kingdom,
-// Orlando, FL") into a lat/lng using Nominatim (OpenStreetMap's free
-// geocoder) — no API key, no billing. Results are cached in the
-// `geocode_cache` table (keyed by normalized query) so the same address
-// never hits Nominatim twice, per its usage policy (it's a shared public
-// service, not meant for repeated lookups of the same thing).
+// Orlando, FL") into a lat/lng — no API key, no billing. Tries, in order:
+//   1. Nominatim (OpenStreetMap) on the exact text.
+//   2. The US Census Bureau's geocoder, which interpolates an exact house
+//      number along a street from TIGER/Line address ranges even when OSM
+//      has no point for it — US addresses only, but free and unlimited.
+//   3. Nominatim again with the street part dropped (city/state/zip only),
+//      flagged "approximate" — better than reporting "not found" for an
+//      address that's perfectly real but under-mapped.
+// Results are cached in geocode_cache (keyed by normalized query) so the
+// same address never re-triggers this chain, per Nominatim's usage policy
+// (it's a shared public service, not meant for repeated identical lookups).
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
+const CENSUS_URL = 'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress'
 // Nominatim's usage policy requires a descriptive User-Agent identifying the
 // application (and ideally a way to contact its maintainer) — anonymous or
 // browser-default User-Agents get blocked.
 const USER_AGENT = 'Superplan-Household-Planner/1.0 (+https://github.com/chrisSmalling/smalling-supa-planner)'
+
+interface Match {
+  lat: number
+  lng: number
+  displayName: string
+}
 
 function normalize(query: string): string {
   return query.trim().toLowerCase()
@@ -27,17 +40,32 @@ function withoutStreetPart(query: string): string | null {
   return parts.slice(1).join(', ')
 }
 
-type NominatimResult = { lat: string; lon: string; display_name: string }
-
-async function lookupNominatim(q: string): Promise<NominatimResult | null> {
+async function lookupNominatim(q: string): Promise<Match | null> {
   const url = `${NOMINATIM_URL}?format=json&limit=1&q=${encodeURIComponent(q)}`
   const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
   if (!res.ok) {
     const detail = await res.text()
     throw new Error(`Nominatim request failed (${res.status}): ${detail}`)
   }
-  const results = (await res.json()) as NominatimResult[]
-  return results[0] ?? null
+  const results = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>
+  const first = results[0]
+  if (!first) return null
+  return { lat: Number(first.lat), lng: Number(first.lon), displayName: first.display_name }
+}
+
+async function lookupCensus(q: string): Promise<Match | null> {
+  const url = `${CENSUS_URL}?address=${encodeURIComponent(q)}&benchmark=Public_AR_Current&format=json`
+  const res = await fetch(url)
+  if (!res.ok) {
+    const detail = await res.text()
+    throw new Error(`Census geocoder failed (${res.status}): ${detail}`)
+  }
+  const data = (await res.json()) as {
+    result?: { addressMatches?: Array<{ coordinates: { x: number; y: number }; matchedAddress: string }> }
+  }
+  const first = data.result?.addressMatches?.[0]
+  if (!first) return null
+  return { lat: first.coordinates.y, lng: first.coordinates.x, displayName: first.matchedAddress }
 }
 
 function client() {
@@ -79,18 +107,30 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    let first: NominatimResult | null
+    let match: Match | null
     let approximate = false
     try {
-      first = await lookupNominatim(query)
-      // A specific house number often isn't in OSM's data even when the
-      // surrounding area is well-mapped — falling back to city/state/zip
+      match = await lookupNominatim(query)
+
+      // A specific house number is often missing from OSM's point data even
+      // when the surrounding streets are well-mapped. The Census geocoder
+      // interpolates along known address ranges instead, so it can resolve
+      // exactly this case for US addresses — worth a second opinion before
+      // giving up on precision.
+      if (!match) {
+        match = await lookupCensus(query).catch((err) => {
+          console.error('Census geocoder lookup failed:', err instanceof Error ? err.message : err)
+          return null
+        })
+      }
+
+      // Still nothing precise — fall back to city/state/zip only, which
       // beats reporting "not found" for an address that's perfectly real.
-      if (!first) {
+      if (!match) {
         const fallback = withoutStreetPart(query)
         if (fallback) {
-          first = await lookupNominatim(fallback)
-          approximate = first !== null
+          match = await lookupNominatim(fallback)
+          approximate = match !== null
         }
       }
     } catch (err) {
@@ -101,15 +141,13 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    if (!first) {
+    if (!match) {
       return new Response(JSON.stringify({ lat: null, lng: null, displayName: null, approximate: false }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    const lat = Number(first.lat)
-    const lng = Number(first.lon)
-    const displayName = first.display_name
+    const { lat, lng, displayName } = match
 
     const { error: insertError } = await supabase
       .from('geocode_cache')
