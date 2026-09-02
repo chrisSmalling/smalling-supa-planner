@@ -11,6 +11,7 @@ import { RecipeButton } from '@/components/RecipeButton'
 import { cn } from '@/lib/utils'
 import { googleMapsSearchUrl } from '@/lib/maps'
 import { geocodeLocation } from '@/lib/geocode'
+import type { GeocodeMatch } from '@/lib/geocode'
 import { CATEGORIES, CATEGORY_LABEL } from '@/lib/types'
 import type { Category, Item, NewItem, Profile, RepeatFreq, Subtask } from '@/lib/types'
 
@@ -63,10 +64,33 @@ export function AddEditSheet({
 }: AddEditSheetProps) {
   const [form, setForm] = React.useState<NewItem>(() => item ?? emptyForm(defaultDate))
   const [saving, setSaving] = React.useState(false)
+  const [locationMatch, setLocationMatch] = React.useState<GeocodeMatch | null>(null)
+  const [locationChecking, setLocationChecking] = React.useState(false)
+  const lastCheckedLocation = React.useRef<string | null>(null)
 
   React.useEffect(() => {
-    if (open) setForm(item ?? emptyForm(defaultDate))
+    if (open) {
+      setForm(item ?? emptyForm(defaultDate))
+      setLocationMatch(null)
+      lastCheckedLocation.current = null
+    }
   }, [open, item, defaultDate])
+
+  async function checkLocation(location: string) {
+    const trimmed = location.trim()
+    if (!trimmed || trimmed === lastCheckedLocation.current) return
+    lastCheckedLocation.current = trimmed
+    setLocationChecking(true)
+    try {
+      const found = await geocodeLocation(trimmed)
+      // Only apply if the field hasn't changed again while this was in flight.
+      if (lastCheckedLocation.current === trimmed) setLocationMatch(found)
+    } catch {
+      if (lastCheckedLocation.current === trimmed) setLocationMatch(null)
+    } finally {
+      setLocationChecking(false)
+    }
+  }
 
   const isEditingOccurrenceOfSeries = Boolean(item && occurrenceDate && item.repeat_freq !== 'none')
 
@@ -78,6 +102,9 @@ export function AddEditSheet({
       const locationChanged = form.location !== (item?.location ?? null)
       if (!form.location) {
         toSave = { ...form, location_lat: null, location_lng: null }
+      } else if (locationMatch && lastCheckedLocation.current === form.location.trim()) {
+        // Already resolved (and shown) via the on-blur check — reuse it.
+        toSave = { ...form, location_lat: locationMatch.lat, location_lng: locationMatch.lng }
       } else if (locationChanged || form.location_lat == null) {
         // Best-effort: an item is still worth saving even if this address
         // doesn't resolve to coordinates — it just won't get a leave-by time.
@@ -197,7 +224,13 @@ export function AddEditSheet({
                 id="location"
                 placeholder="Magic Kingdom, Orlando, FL"
                 value={form.location ?? ''}
-                onChange={(e) => setForm({ ...form, location: e.target.value || null })}
+                onChange={(e) => {
+                  setForm({ ...form, location: e.target.value || null })
+                  setLocationMatch(null)
+                }}
+                onBlur={(e) => {
+                  if (e.target.value.trim()) checkLocation(e.target.value)
+                }}
               />
               {form.location && (
                 <Button type="button" variant="outline" size="icon" asChild>
@@ -207,6 +240,15 @@ export function AddEditSheet({
                 </Button>
               )}
             </div>
+            {locationChecking && <p className="text-xs text-muted-foreground">Checking…</p>}
+            {!locationChecking && form.location && locationMatch === null && lastCheckedLocation.current && (
+              <p className="text-xs text-amber-600">
+                Couldn't verify this location — a leave-by time won't show for it.
+              </p>
+            )}
+            {!locationChecking && locationMatch && (
+              <p className="text-xs text-muted-foreground">📍 {locationMatch.displayName ?? 'Location found'}</p>
+            )}
           </div>
 
           <div className="space-y-1.5">

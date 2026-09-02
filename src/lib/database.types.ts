@@ -102,9 +102,9 @@ export type Database = {
         Relationships: []
       }
       geocode_cache: {
-        Row: { query: string; lat: number; lng: number; created_at: string }
-        Insert: { query: string; lat: number; lng: number; created_at?: string }
-        Update: { query?: string; lat?: number; lng?: number; created_at?: string }
+        Row: { query: string; lat: number; lng: number; display_name: string | null; created_at: string }
+        Insert: { query: string; lat: number; lng: number; display_name?: string | null; created_at?: string }
+        Update: { query?: string; lat?: number; lng?: number; display_name?: string | null; created_at?: string }
         Relationships: []
       }
       item_status: {

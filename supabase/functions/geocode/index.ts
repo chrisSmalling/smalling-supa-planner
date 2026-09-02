@@ -45,12 +45,12 @@ Deno.serve(async (req: Request) => {
 
     const { data: cached } = await supabase
       .from('geocode_cache')
-      .select('lat, lng')
+      .select('lat, lng, display_name')
       .eq('query', key)
       .maybeSingle()
 
     if (cached) {
-      return new Response(JSON.stringify({ lat: cached.lat, lng: cached.lng }), {
+      return new Response(JSON.stringify({ lat: cached.lat, lng: cached.lng, displayName: cached.display_name }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
@@ -67,21 +67,24 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    const results = (await res.json()) as Array<{ lat: string; lon: string }>
+    const results = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>
     const first = results[0]
     if (!first) {
-      return new Response(JSON.stringify({ lat: null, lng: null }), {
+      return new Response(JSON.stringify({ lat: null, lng: null, displayName: null }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
     const lat = Number(first.lat)
     const lng = Number(first.lon)
+    const displayName = first.display_name
 
-    const { error: insertError } = await supabase.from('geocode_cache').insert({ query: key, lat, lng })
+    const { error: insertError } = await supabase
+      .from('geocode_cache')
+      .insert({ query: key, lat, lng, display_name: displayName })
     if (insertError) console.error('Failed to cache geocode result:', insertError)
 
-    return new Response(JSON.stringify({ lat, lng }), {
+    return new Response(JSON.stringify({ lat, lng, displayName }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
