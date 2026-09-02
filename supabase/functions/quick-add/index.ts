@@ -1,7 +1,11 @@
 // Supabase Edge Function (Deno). Parses one Quick Add text entry into structured
-// items via Gemini. The API key lives only in this server-side env var — the
-// client never sees it. Gemini *proposes*; nothing is written to the database
-// here or anywhere else until the user confirms in the app.
+// items via Gemini. The API key lives only server-side — the client never
+// sees it. Gemini *proposes*; nothing is written to the database here or
+// anywhere else until the user confirms in the app.
+
+import { createClient } from 'npm:@supabase/supabase-js@2'
+
+const VAULT_SECRET_NAME = 'Gemini-api'
 
 const GEMINI_MODEL = 'gemini-2.5-flash'
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
@@ -74,6 +78,33 @@ Rules:
 Quick add text: "${text}"`
 }
 
+/**
+ * Prefers a plain Edge Function secret (GEMINI_API_KEY / Gemini-api) if one
+ * is ever set that way, otherwise falls back to reading the key out of
+ * Supabase Vault — a database-level encrypted secret store, distinct from
+ * Edge Function env vars, that isn't exposed via Deno.env on its own. The
+ * service-role key used here is injected into every Edge Function
+ * automatically; it never leaves this server-side function.
+ */
+async function getGeminiApiKey(): Promise<string | null> {
+  const direct = Deno.env.get('GEMINI_API_KEY') ?? Deno.env.get('Gemini-api')
+  if (direct) return direct
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!supabaseUrl || !serviceRoleKey) return null
+
+  const vaultClient = createClient(supabaseUrl, serviceRoleKey, { db: { schema: 'vault' } })
+  const { data, error } = await vaultClient
+    .from('decrypted_secrets')
+    .select('decrypted_secret')
+    .eq('name', VAULT_SECRET_NAME)
+    .single()
+
+  if (error || !data?.decrypted_secret) return null
+  return data.decrypted_secret as string
+}
+
 Deno.serve(async (req: Request) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -83,8 +114,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    // Accept either secret name so this works with a key set up under either.
-    const apiKey = Deno.env.get('GEMINI_API_KEY') ?? Deno.env.get('Gemini-api')
+    const apiKey = await getGeminiApiKey()
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'Gemini API key is not configured' }), {
         status: 500,
