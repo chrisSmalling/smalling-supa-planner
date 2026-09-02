@@ -9,6 +9,12 @@ const VAULT_SECRET_NAME = 'Gemini-api'
 
 const GEMINI_MODEL = 'gemini-3.6-flash'
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
+// Google's own overload backoff advice is "usually temporary" — a single
+// retry catches most of those. Each attempt is capped so a slow overloaded
+// backend fails in seconds, not the 60-90s it can otherwise hang for with
+// no timeout at all.
+const GEMINI_TIMEOUT_MS = 15000
+const GEMINI_RETRY_DELAY_MS = 1000
 
 const CATEGORIES = ['activity', 'meal', 'chore', 'project', 'appointment', 'milestone', 'note']
 const REPEAT_FREQS = ['none', 'daily', 'weekly', 'monthly', 'yearly']
@@ -166,6 +172,32 @@ async function getGeminiApiKey(): Promise<string | null> {
   return data as string
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function callGemini(prompt: string, apiKey: string): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
+  try {
+    return await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: RESPONSE_SCHEMA,
+          temperature: 0.2,
+        },
+      }),
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 Deno.serve(async (req: Request) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -194,23 +226,36 @@ Deno.serve(async (req: Request) => {
     const today = new Date().toISOString().slice(0, 10)
     const prompt = buildPrompt(text, today, roster ?? [])
 
-    const geminiRes = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema: RESPONSE_SCHEMA,
-          temperature: 0.2,
-        },
-      }),
-    })
+    let geminiRes: Response
+    try {
+      geminiRes = await callGemini(prompt, apiKey)
+      // 503 = Google's own "temporarily overloaded, try again" — worth
+      // exactly one retry rather than making the user resubmit by hand.
+      if (geminiRes.status === 503) {
+        await sleep(GEMINI_RETRY_DELAY_MS)
+        geminiRes = await callGemini(prompt, apiKey)
+      }
+    } catch (err) {
+      const timedOut = err instanceof DOMException && err.name === 'AbortError'
+      console.error(timedOut ? 'Gemini request timed out' : 'Gemini request errored:', err)
+      return new Response(
+        JSON.stringify({
+          error: timedOut
+            ? "Gemini is taking too long to respond (it's probably overloaded) — try again in a moment."
+            : 'Could not reach Gemini — try again in a moment.',
+        }),
+        { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
 
     if (!geminiRes.ok) {
       const detail = await geminiRes.text()
       console.error(`Gemini request failed (${geminiRes.status}):`, detail)
-      return new Response(JSON.stringify({ error: `Gemini request failed: ${detail}` }), {
+      const message =
+        geminiRes.status === 503
+          ? "Gemini is overloaded right now — try again in a moment."
+          : `Gemini request failed: ${detail}`
+      return new Response(JSON.stringify({ error: message }), {
         status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
