@@ -17,6 +17,29 @@ function normalize(query: string): string {
   return query.trim().toLowerCase()
 }
 
+/** Drops the leading street-address segment, keeping city/state/zip — e.g. "17735 Pleasantview Blvd, Land O Lakes, FL 34638" -> "Land O Lakes, FL 34638". Returns null if there's nothing to drop. */
+function withoutStreetPart(query: string): string | null {
+  const parts = query
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)
+  if (parts.length < 2) return null
+  return parts.slice(1).join(', ')
+}
+
+type NominatimResult = { lat: string; lon: string; display_name: string }
+
+async function lookupNominatim(q: string): Promise<NominatimResult | null> {
+  const url = `${NOMINATIM_URL}?format=json&limit=1&q=${encodeURIComponent(q)}`
+  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
+  if (!res.ok) {
+    const detail = await res.text()
+    throw new Error(`Nominatim request failed (${res.status}): ${detail}`)
+  }
+  const results = (await res.json()) as NominatimResult[]
+  return results[0] ?? null
+}
+
 function client() {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -45,32 +68,41 @@ Deno.serve(async (req: Request) => {
 
     const { data: cached } = await supabase
       .from('geocode_cache')
-      .select('lat, lng, display_name')
+      .select('lat, lng, display_name, approximate')
       .eq('query', key)
       .maybeSingle()
 
     if (cached) {
-      return new Response(JSON.stringify({ lat: cached.lat, lng: cached.lng, displayName: cached.display_name }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return new Response(
+        JSON.stringify({ lat: cached.lat, lng: cached.lng, displayName: cached.display_name, approximate: cached.approximate }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
     }
 
-    const url = `${NOMINATIM_URL}?format=json&limit=1&q=${encodeURIComponent(query)}`
-    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
-
-    if (!res.ok) {
-      const detail = await res.text()
-      console.error(`Nominatim request failed (${res.status}):`, detail)
-      return new Response(JSON.stringify({ error: `Geocoding failed: ${detail}` }), {
+    let first: NominatimResult | null
+    let approximate = false
+    try {
+      first = await lookupNominatim(query)
+      // A specific house number often isn't in OSM's data even when the
+      // surrounding area is well-mapped — falling back to city/state/zip
+      // beats reporting "not found" for an address that's perfectly real.
+      if (!first) {
+        const fallback = withoutStreetPart(query)
+        if (fallback) {
+          first = await lookupNominatim(fallback)
+          approximate = first !== null
+        }
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : err)
+      return new Response(JSON.stringify({ error: 'Geocoding failed' }), {
         status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    const results = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>
-    const first = results[0]
     if (!first) {
-      return new Response(JSON.stringify({ lat: null, lng: null, displayName: null }), {
+      return new Response(JSON.stringify({ lat: null, lng: null, displayName: null, approximate: false }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
@@ -81,10 +113,10 @@ Deno.serve(async (req: Request) => {
 
     const { error: insertError } = await supabase
       .from('geocode_cache')
-      .insert({ query: key, lat, lng, display_name: displayName })
+      .insert({ query: key, lat, lng, display_name: displayName, approximate })
     if (insertError) console.error('Failed to cache geocode result:', insertError)
 
-    return new Response(JSON.stringify({ lat, lng, displayName }), {
+    return new Response(JSON.stringify({ lat, lng, displayName, approximate }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {

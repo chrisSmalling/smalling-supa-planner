@@ -83,7 +83,9 @@ export function HouseholdSettingsSheet({ open, onOpenChange }: HouseholdSettings
               <Label>Is this your home?</Label>
               <div className="rounded-lg border bg-muted/40 p-3 text-sm">{match.displayName ?? address}</div>
               <p className="text-xs text-muted-foreground">
-                A street address alone can match the wrong city or state — double-check this before saving.
+                {match.approximate
+                  ? "Couldn't find that exact street address — this is the city center instead, close enough for drive-time estimates but not pinpoint."
+                  : 'A street address alone can match the wrong city or state — double-check this before saving.'}
               </p>
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}

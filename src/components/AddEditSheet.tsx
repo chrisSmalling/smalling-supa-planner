@@ -247,7 +247,10 @@ export function AddEditSheet({
               </p>
             )}
             {!locationChecking && locationMatch && (
-              <p className="text-xs text-muted-foreground">📍 {locationMatch.displayName ?? 'Location found'}</p>
+              <p className="text-xs text-muted-foreground">
+                📍 {locationMatch.displayName ?? 'Location found'}
+                {locationMatch.approximate && ' (approximate — city center, not exact address)'}
+              </p>
             )}
           </div>
 

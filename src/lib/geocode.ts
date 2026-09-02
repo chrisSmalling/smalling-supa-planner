@@ -9,6 +9,8 @@ export interface Coords {
 export interface GeocodeMatch extends Coords {
   /** What Nominatim actually matched, e.g. "17735 Pleasantview Blvd, Broadview Heights, OH 44147, USA". A bare street address with no city/state is ambiguous — show this back before trusting it, since Nominatim will still confidently return its single best (possibly wrong-state) guess. */
   displayName: string | null
+  /** True if the exact street address wasn't found and this falls back to a city/state/zip-level match — close, not precise. */
+  approximate: boolean
 }
 
 /**
@@ -25,10 +27,11 @@ export async function geocodeLocation(query: string): Promise<GeocodeMatch | nul
       lat: number | null
       lng: number | null
       displayName: string | null
+      approximate: boolean
     }>('geocode', { body: { query } })
     if (error) throw error
     if (data?.lat == null || data?.lng == null) return null
-    return { lat: data.lat, lng: data.lng, displayName: data.displayName }
+    return { lat: data.lat, lng: data.lng, displayName: data.displayName, approximate: data.approximate }
   } catch (err) {
     if (err instanceof FunctionsHttpError) {
       try {
