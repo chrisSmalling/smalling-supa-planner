@@ -7,17 +7,18 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const VAULT_SECRET_NAME = 'Gemini-api'
 
-const GEMINI_MODEL = 'gemini-3.6-flash'
-// Tried when the primary model reports 503 (overloaded) — a different model
-// has independent capacity, so this actually improves the odds during a
-// sustained outage instead of just re-knocking on the same busy door.
-// (Confirmed via logs: gemini-3.6-flash returned the identical "high
-// demand" 503 for 25+ minutes straight on 2026-09-02, so blindly retrying
-// the same model wasn't going to help.) gemini-3.7-flash is newer and much
-// less widely adopted yet, so it's a good bet for spare capacity — verified
-// against ModelService.ListModels, unlike the first guess (3.6-flash-lite,
-// which doesn't exist).
-const GEMINI_FALLBACK_MODEL = 'gemini-3.7-flash'
+// Free-tier Gemini gets deprioritized under load — confirmed via logs on
+// 2026-09-02: gemini-3.6-flash alone was down (503 "high demand", then full
+// timeouts) for close to an hour straight. Trying a second model only
+// *after* the first fails just adds up wait time without improving the
+// odds much, since a sustained outage doesn't clear in the time a sequential
+// retry takes. Instead, two different models (verified real via
+// ModelService.ListModels — the first fallback guess, 3.6-flash-lite,
+// doesn't exist) are raced in parallel; whichever answers successfully
+// first wins and the other is cancelled. Same request budget as a
+// sequential retry, roughly half the worst-case wait, and it actually
+// benefits from the outage being model-specific rather than API-wide.
+const GEMINI_MODELS = ['gemini-3.7-flash', 'gemini-flash-lite-latest']
 const geminiUrl = (model: string) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
 // Each attempt is capped so a slow/overloaded backend fails in seconds, not
 // the 60-90s it can otherwise hang for with no timeout at all.
@@ -179,11 +180,15 @@ async function getGeminiApiKey(): Promise<string | null> {
   return data as string
 }
 
-async function callGemini(prompt: string, apiKey: string, model: string): Promise<Response> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
+interface ModelAttempt {
+  model: string
+  res?: Response
+  timedOut?: boolean
+}
+
+async function callGemini(prompt: string, apiKey: string, model: string, signal: AbortSignal): Promise<ModelAttempt> {
   try {
-    return await fetch(`${geminiUrl(model)}?key=${apiKey}`, {
+    const res = await fetch(`${geminiUrl(model)}?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -194,11 +199,44 @@ async function callGemini(prompt: string, apiKey: string, model: string): Promis
           temperature: 0.2,
         },
       }),
-      signal: controller.signal,
+      signal,
     })
-  } finally {
-    clearTimeout(timeout)
+    return { model, res }
+  } catch (err) {
+    const timedOut = err instanceof DOMException && err.name === 'AbortError'
+    console.error(`Gemini (${model}) ${timedOut ? 'timed out or was cancelled' : 'errored'}:`, err)
+    return { model, timedOut }
   }
+}
+
+/** Races every candidate model at once; the first one to answer successfully wins and the rest are cancelled. Resolves with every attempt's outcome once either a winner is found or all have failed, so a failure can still report the most informative error. */
+function raceGeminiModels(prompt: string, apiKey: string, models: string[]): Promise<ModelAttempt[]> {
+  const controllers = models.map(() => new AbortController())
+  const timers = controllers.map((c) => setTimeout(() => c.abort(), GEMINI_TIMEOUT_MS))
+  const clearTimers = () => timers.forEach(clearTimeout)
+  const attempts = models.map((model, i) => callGemini(prompt, apiKey, model, controllers[i].signal))
+
+  return new Promise((resolve) => {
+    const results: ModelAttempt[] = new Array(models.length)
+    let doneCount = 0
+    let settled = false
+    attempts.forEach((attempt, i) => {
+      attempt.then((result) => {
+        results[i] = result
+        doneCount++
+        if (!settled && result.res?.ok) {
+          settled = true
+          controllers.forEach((c, j) => j !== i && c.abort())
+          clearTimers()
+          resolve(results.filter(Boolean))
+        } else if (doneCount === models.length && !settled) {
+          settled = true
+          clearTimers()
+          resolve(results)
+        }
+      })
+    })
+  })
 }
 
 Deno.serve(async (req: Request) => {
@@ -229,49 +267,35 @@ Deno.serve(async (req: Request) => {
     const today = new Date().toISOString().slice(0, 10)
     const prompt = buildPrompt(text, today, roster ?? [])
 
-    async function tryModel(model: string): Promise<{ res: Response } | { timedOut: boolean }> {
-      try {
-        return { res: await callGemini(prompt, apiKey!, model) }
-      } catch (err) {
-        const timedOut = err instanceof DOMException && err.name === 'AbortError'
-        console.error(`Gemini (${model}) ${timedOut ? 'timed out' : 'errored'}:`, err)
-        return { timedOut }
+    const results = await raceGeminiModels(prompt, apiKey, GEMINI_MODELS)
+    const winner = results.find((r) => r.res?.ok)
+
+    if (!winner) {
+      // Nothing succeeded — report the most useful thing we have: an actual
+      // HTTP error from Google beats a bare timeout, since it names the
+      // real reason (503 overloaded, 404 bad model, etc.).
+      const withResponse = results.find((r) => r.res)
+      if (withResponse?.res) {
+        const detail = await withResponse.res.text()
+        console.error(`Gemini (${withResponse.model}) request failed (${withResponse.res.status}):`, detail)
+        const message =
+          withResponse.res.status === 503
+            ? 'Gemini is overloaded right now — try again in a moment.'
+            : `Gemini request failed: ${detail}`
+        return new Response(JSON.stringify({ error: message }), {
+          status: 502,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
       }
-    }
-
-    let usedModel = GEMINI_MODEL
-    let attempt = await tryModel(GEMINI_MODEL)
-    // 503 (overloaded) or a hung/failed request — try a different model
-    // with independent capacity rather than re-knocking on the same door.
-    if ('timedOut' in attempt || attempt.res.status === 503) {
-      usedModel = GEMINI_FALLBACK_MODEL
-      attempt = await tryModel(GEMINI_FALLBACK_MODEL)
-    }
-
-    if ('timedOut' in attempt) {
       return new Response(
         JSON.stringify({
-          error: attempt.timedOut
-            ? "Gemini is taking too long to respond (it's probably overloaded) — try again in a moment."
-            : 'Could not reach Gemini — try again in a moment.',
+          error: `Gemini isn't responding right now (tried ${results.length} models) — try again in a moment.`,
         }),
         { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
 
-    const geminiRes = attempt.res
-    if (!geminiRes.ok) {
-      const detail = await geminiRes.text()
-      console.error(`Gemini (${usedModel}) request failed (${geminiRes.status}):`, detail)
-      const message =
-        geminiRes.status === 503
-          ? 'Gemini is overloaded right now — try again in a moment.'
-          : `Gemini request failed: ${detail}`
-      return new Response(JSON.stringify({ error: message }), {
-        status: 502,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    const geminiRes = winner.res!
 
     const geminiData = await geminiRes.json()
     const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
