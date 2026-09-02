@@ -147,6 +147,7 @@ Deno.serve(async (req: Request) => {
 
     if (!geminiRes.ok) {
       const detail = await geminiRes.text()
+      console.error(`Gemini request failed (${geminiRes.status}):`, detail)
       return new Response(JSON.stringify({ error: `Gemini request failed: ${detail}` }), {
         status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -167,6 +168,7 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
+    console.error('Unhandled error:', err)
     return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Unknown error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

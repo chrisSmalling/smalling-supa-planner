@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { Sparkles, X } from 'lucide-react'
+import { FunctionsHttpError } from '@supabase/supabase-js'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { CategoryDot } from '@/components/ui/badge'
@@ -39,7 +40,19 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
       setParsed(items)
       setIncluded(items.map(() => true))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Quick Add is unavailable right now')
+      // supabase-js's default error.message for a non-2xx response is just
+      // "Edge Function returned a non-2xx status code" — pull the actual
+      // message out of the response body so failures are self-diagnosing.
+      if (err instanceof FunctionsHttpError) {
+        try {
+          const body = await err.context.json()
+          setError(body?.error ?? err.message)
+        } catch {
+          setError(err.message)
+        }
+      } else {
+        setError(err instanceof Error ? err.message : 'Quick Add is unavailable right now')
+      }
     } finally {
       setLoading(false)
     }
