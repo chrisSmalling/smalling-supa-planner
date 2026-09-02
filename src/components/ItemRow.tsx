@@ -1,8 +1,10 @@
+import { MapPin } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { CategoryDot } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { formatTime } from '@/lib/dateUtils'
 import { milestoneAge } from '@/lib/recurrence'
+import { googleMapsSearchUrl } from '@/lib/maps'
 import type { EnrichedOccurrence } from '@/lib/occurrences'
 import type { Profile } from '@/lib/types'
 
@@ -48,11 +50,24 @@ export function ItemRow({ occurrence, members, onToggleDone, onClick }: ItemRowP
           {age !== null && <span className="text-muted-foreground"> · turns {age}</span>}
         </p>
         <p className="truncate text-xs text-muted-foreground">
-          {[item.start_time ? formatTime(item.start_time) : null, who?.display_name]
+          {[item.start_time ? formatTime(item.start_time) : null, who?.display_name, item.location]
             .filter(Boolean)
             .join(' · ')}
         </p>
       </div>
+
+      {item.location && (
+        <a
+          href={googleMapsSearchUrl(item.location)}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="shrink-0 rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label={`Open ${item.location} in Maps`}
+        >
+          <MapPin className="h-4 w-4" />
+        </a>
+      )}
     </button>
   )
 }

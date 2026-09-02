@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { MapPin } from 'lucide-react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -6,9 +7,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { RecipeButton } from '@/components/RecipeButton'
 import { cn } from '@/lib/utils'
+import { googleMapsSearchUrl } from '@/lib/maps'
 import { CATEGORIES, CATEGORY_LABEL } from '@/lib/types'
 import type { Category, Item, NewItem, Profile, RepeatFreq, Subtask } from '@/lib/types'
+
+const CHECKLIST_CATEGORIES: Category[] = ['project', 'chore', 'meal']
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
@@ -20,6 +25,7 @@ function emptyForm(defaultDate: string): NewItem {
     start_time: null,
     who: null,
     notes: null,
+    location: null,
     subtasks: null,
     repeat_freq: 'none',
     repeat_interval: 1,
@@ -168,6 +174,25 @@ export function AddEditSheet({
           </div>
 
           <div className="space-y-1.5">
+            <Label htmlFor="location">Location</Label>
+            <div className="flex gap-2">
+              <Input
+                id="location"
+                placeholder="Magic Kingdom, Orlando, FL"
+                value={form.location ?? ''}
+                onChange={(e) => setForm({ ...form, location: e.target.value || null })}
+              />
+              {form.location && (
+                <Button type="button" variant="outline" size="icon" asChild>
+                  <a href={googleMapsSearchUrl(form.location)} target="_blank" rel="noopener noreferrer" aria-label="Open in Maps">
+                    <MapPin className="h-4 w-4" />
+                  </a>
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
             <Label>Repeat</Label>
             <Select
               value={form.repeat_freq}
@@ -245,9 +270,23 @@ export function AddEditSheet({
             </div>
           )}
 
-          {form.category === 'project' && (
+          {form.category === 'meal' && (
+            <RecipeButton
+              title={form.title}
+              notes={form.notes}
+              onSuggestion={(suggestion) =>
+                setForm({
+                  ...form,
+                  subtasks: suggestion.ingredients.map((text) => ({ text, done: false })),
+                  notes: [form.notes, suggestion.instructions].filter(Boolean).join('\n\n'),
+                })
+              }
+            />
+          )}
+
+          {CHECKLIST_CATEGORIES.includes(form.category) && (
             <div className="space-y-2">
-              <Label>Subtasks</Label>
+              <Label>{form.category === 'meal' ? 'Ingredients' : 'Checklist'}</Label>
               {(form.subtasks ?? []).map((subtask, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <Checkbox
@@ -257,7 +296,7 @@ export function AddEditSheet({
                   <Input
                     value={subtask.text}
                     onChange={(e) => updateSubtask(i, { text: e.target.value })}
-                    placeholder="Subtask"
+                    placeholder={form.category === 'meal' ? 'Ingredient' : 'Subtask'}
                   />
                   <Button type="button" variant="ghost" size="sm" onClick={() => removeSubtask(i)}>
                     Remove
@@ -265,7 +304,7 @@ export function AddEditSheet({
                 </div>
               ))}
               <Button type="button" variant="outline" size="sm" onClick={addSubtask}>
-                Add subtask
+                {form.category === 'meal' ? 'Add ingredient' : 'Add subtask'}
               </Button>
             </div>
           )}

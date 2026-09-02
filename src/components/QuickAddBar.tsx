@@ -75,7 +75,8 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
         start_time: p.start_time,
         who: resolveWho(p.who),
         notes: p.notes,
-        subtasks: null,
+        location: p.location,
+        subtasks: p.subtasks ? p.subtasks.map((text) => ({ text, done: false })) : null,
         repeat_freq: p.repeat_freq,
         repeat_interval: p.repeat_interval,
         repeat_weekdays: p.repeat_weekdays,
@@ -119,8 +120,16 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
                     {CATEGORY_LABEL[p.category]} · {formatDisplayDate(p.starts_on)}
                     {p.start_time && ` · ${formatTime(p.start_time)}`}
                     {p.who && ` · ${p.who}`}
+                    {p.location && ` · ${p.location}`}
                     {p.repeat_freq !== 'none' && ` · repeats ${p.repeat_freq}`}
                   </p>
+                  {p.subtasks && p.subtasks.length > 0 && (
+                    <ul className="mt-0.5 list-inside list-disc text-xs text-muted-foreground">
+                      {p.subtasks.map((s, si) => (
+                        <li key={si}>{s}</li>
+                      ))}
+                    </ul>
+                  )}
                   {inferredFlags.length > 0 && (
                     <p className="mt-0.5 text-xs font-medium text-category-chore">
                       ✨ Added automatically — you didn't type this part

@@ -27,6 +27,7 @@ export type Database = {
           start_time: string | null
           who: string | null
           notes: string | null
+          location: string | null
           subtasks: unknown | null
           repeat_freq: string
           repeat_interval: number
@@ -44,6 +45,7 @@ export type Database = {
           start_time?: string | null
           who?: string | null
           notes?: string | null
+          location?: string | null
           subtasks?: unknown | null
           repeat_freq?: string
           repeat_interval?: number
@@ -61,6 +63,7 @@ export type Database = {
           start_time?: string | null
           who?: string | null
           notes?: string | null
+          location?: string | null
           subtasks?: unknown | null
           repeat_freq?: string
           repeat_interval?: number

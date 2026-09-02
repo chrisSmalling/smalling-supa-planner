@@ -67,6 +67,35 @@ views still render the last-known data with no connection. Treat any push
 notification as best-effort — the **Needs attention** strip (14-day
 lookahead + overdue chores) is the real reminder surface.
 
+## Smarter Quick Add
+
+Quick Add doesn't just extract literal calendar entries — it's told to
+notice what's implied and split it out as its own item:
+
+- **Inferred prep/logistics steps**: "French toast Friday for breakfast,
+  needs prepping the night before" produces two items — the meal, and a
+  separate "Prep French toast" chore the evening before — flagged in the
+  confirm card as auto-added, not something you typed.
+- **Packing lists**: "Emma's recital Saturday, needs her costume, shoes,
+  and hairbrush" produces the recital plus a checklist item ("Pack for
+  Emma's recital") with each thing as its own checkable line.
+- **Locations**: a mentioned venue or address is captured on the item and
+  gets a one-tap Google Maps link (no API key needed — it's a plain search
+  URL) wherever that item shows up.
+- **Healthy recipes**: on a meal item's edit sheet, "Suggest a healthy
+  recipe" calls Gemini once more and fills the ingredient checklist +
+  instructions for you to review before saving.
+
+None of this is flagged as ambiguous just because a field was empty —
+flags mean "I guessed, double-check this," not "this field happens to be
+null." See the prompt in `supabase/functions/quick-add/index.ts` for the
+worked examples that keep this calibrated.
+
+**Not built**: turn-by-turn "leave by" times. The Maps link is free (just a
+URL); a real leave-by time needs an actual travel-time API (Google Maps
+Distance Matrix or similar) plus a home address to calculate from — a
+deliberate scope line since that means a second paid API key.
+
 ## Project structure
 
 ```
@@ -83,14 +112,17 @@ src/
     HouseholdContext.tsx   — loads the one household + its members
   components/
     WeekView.tsx, MonthView.tsx, DaySheet.tsx
-    AddEditSheet.tsx       — manual add/edit, repeat rule builder, subtasks
+    AddEditSheet.tsx       — manual add/edit, repeat rule builder, subtasks, location, recipe button
     QuickAddBar.tsx        — calls the quick-add Edge Function, confirm-before-write
+    RecipeButton.tsx        — calls suggest-recipe, fills the meal's checklist + notes
     NeedsAttentionStrip.tsx
   pages/
     SetupHousehold.tsx, WhoAreYou.tsx, Planner.tsx
 supabase/
-  migrations/              — households, profiles, items, item_status, RLS (see 0003 re: open access)
-  functions/quick-add/      — Gemini parse (server-side key only)
+  migrations/              — households, profiles, items, item_status, RLS (see 0003 re: open access), location
+  functions/
+    quick-add/              — Gemini parse (server-side key only)
+    suggest-recipe/          — Gemini recipe suggestion for a meal item
 ```
 
 ## Build order this followed

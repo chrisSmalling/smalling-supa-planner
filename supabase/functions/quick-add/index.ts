@@ -26,11 +26,18 @@ const RESPONSE_SCHEMA = {
           starts_on: { type: 'string', description: 'YYYY-MM-DD' },
           start_time: { type: 'string', nullable: true, description: 'HH:MM 24h, or null for all-day' },
           who: { type: 'string', nullable: true },
+          location: { type: 'string', nullable: true, description: 'A venue name or address, if one was mentioned' },
           repeat_freq: { type: 'string', enum: REPEAT_FREQS },
           repeat_interval: { type: 'integer' },
           repeat_weekdays: { type: 'array', items: { type: 'integer' }, nullable: true },
           repeat_until: { type: 'string', nullable: true, description: 'YYYY-MM-DD or null' },
           notes: { type: 'string', nullable: true },
+          subtasks: {
+            type: 'array',
+            items: { type: 'string' },
+            nullable: true,
+            description: 'A checklist of things to bring/do, only when the item is genuinely a multi-item list',
+          },
           flags: { type: 'array', items: { type: 'string' } },
           confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
         },
@@ -40,11 +47,13 @@ const RESPONSE_SCHEMA = {
           'starts_on',
           'start_time',
           'who',
+          'location',
           'repeat_freq',
           'repeat_interval',
           'repeat_weekdays',
           'repeat_until',
           'notes',
+          'subtasks',
           'flags',
           'confidence',
         ],
@@ -75,9 +84,16 @@ Rules:
   - "my birthday is January 14" / a recurring anniversary -> yearly, category milestone, starts_on the next Jan 14; if a birth year is stated, use that year as starts_on's year instead so age can be computed.
   - Nothing recurrence-related mentioned -> repeat_freq "none", repeat_interval 1, repeat_weekdays null, repeat_until null.
 - who: match a name to the roster case-insensitively; null if no one is named or the name isn't on the roster.
+- location: a venue name or address, if one was mentioned ("Magic Kingdom", "Dr. Patel's office", "grandma's house"). Null if nothing place-like was said — don't invent one.
 - notes: never let real detail from the input evaporate. Anything specific
-  that doesn't have its own field — where, what to bring, a constraint, a
-  reason — goes in notes on the item it's attached to, verbatim or close to it.
+  that doesn't have its own field — a constraint, a reason, context that
+  isn't a place or a checklist item — goes in notes on the item it's
+  attached to, verbatim or close to it.
+- subtasks: a checklist, only when the item is genuinely a multi-item list —
+  several things to pack, buy, or bring. Split each thing into its own
+  string; don't cram a list into the title or notes when subtasks exists for
+  exactly this. A single thing to bring doesn't need a checklist — a plain
+  title is enough ("Bring the folder" needs no subtasks). Null otherwise.
 - **Prep/logistics splitting — the main thing that makes this useful, do not
   skip it**: if the text implies a *separate* earlier action someone has to
   actually do — prep, thaw, buy, pack, charge, book, RSVP, print, mail — emit
@@ -85,8 +101,8 @@ Rules:
   it on the date it needs doing (the night before, that morning, "by
   Wednesday", etc.), give it category "chore" (or "note" if it's not really a
   discrete task), a title that stands alone as a to-do ("Prep French toast
-  for breakfast", not "prep"), and flag it as inferred so it's clear this
-  wasn't literally typed:
+  for breakfast", not "prep"), use subtasks if it's a multi-item list, and
+  flag it as inferred so it's clear this wasn't literally typed:
   - "French toast Friday for breakfast, will need to be prepped the night
     before" -> TWO items: (1) meal "French toast", Friday, 08:00 (breakfast);
     (2) chore "Prep French toast for breakfast", Thursday (the night before),
@@ -96,8 +112,15 @@ Rules:
     2-3 days earlier (thawing a turkey takes days — use your judgment on the
     lead time a task like this actually needs), flags: ["inferred prep step",
     "assumed thaw lead time"].
-  - "Emma's recital Saturday, needs to bring her costume" -> the recital PLUS
-    a chore "Pack Emma's costume" the night before or morning of.
+  - "Emma's recital Saturday, needs her costume, shoes, and hairbrush" -> the
+    recital PLUS a chore "Pack for Emma's recital" the night before or
+    morning of, with subtasks ["Costume", "Shoes", "Hairbrush"], flags:
+    ["inferred prep step"].
+  - "beach day Saturday" -> the activity PLUS (if it's plausible a family
+    would need to pack for it) a chore "Pack for the beach" that morning
+    with a sensible subtasks list (sunscreen, towels, swimsuits, water) —
+    use judgment for what's genuinely implied by the activity, and flag it
+    clearly as inferred since none of it was stated.
   - If nothing implies a separate prep action, don't invent one — a plain
     "dentist Tuesday at 2" is just one item.
 - flags are for genuine uncertainty, not routine nulls. A field being empty

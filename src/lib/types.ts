@@ -43,6 +43,7 @@ export interface Item {
   start_time: string | null // HH:MM:SS
   who: string | null
   notes: string | null
+  location: string | null
   subtasks: Subtask[] | null
   repeat_freq: RepeatFreq
   repeat_interval: number

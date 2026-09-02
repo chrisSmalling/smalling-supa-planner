@@ -12,6 +12,7 @@ function makeItem(overrides: Partial<Item>): Item {
     start_time: null,
     who: null,
     notes: null,
+    location: null,
     subtasks: null,
     repeat_freq: 'none',
     repeat_interval: 1,
