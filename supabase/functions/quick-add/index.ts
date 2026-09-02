@@ -13,8 +13,11 @@ const GEMINI_MODEL = 'gemini-3.6-flash'
 // sustained outage instead of just re-knocking on the same busy door.
 // (Confirmed via logs: gemini-3.6-flash returned the identical "high
 // demand" 503 for 25+ minutes straight on 2026-09-02, so blindly retrying
-// the same model wasn't going to help.)
-const GEMINI_FALLBACK_MODEL = 'gemini-3.6-flash-lite'
+// the same model wasn't going to help.) gemini-3.7-flash is newer and much
+// less widely adopted yet, so it's a good bet for spare capacity — verified
+// against ModelService.ListModels, unlike the first guess (3.6-flash-lite,
+// which doesn't exist).
+const GEMINI_FALLBACK_MODEL = 'gemini-3.7-flash'
 const geminiUrl = (model: string) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
 // Each attempt is capped so a slow/overloaded backend fails in seconds, not
 // the 60-90s it can otherwise hang for with no timeout at all.
