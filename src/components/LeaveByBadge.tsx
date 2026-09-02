@@ -4,6 +4,13 @@ import { computeLeaveBy } from '@/lib/leaveBy'
 import { formatTime } from '@/lib/dateUtils'
 
 const BUFFER_MINUTES = 10
+// OSRM only knows how to drive somewhere — it has no concept of flying. Past
+// this distance a "leave by" time computed from driving directions isn't
+// useful advice (a 19-hour drive estimate for a trip you're actually flying
+// to is technically correct and completely wrong to act on), so treat
+// anything beyond a reasonable local/day-trip radius as "no estimate"
+// rather than show a number nobody should follow.
+const MAX_USEFUL_DRIVE_MINUTES = 180
 
 interface LeaveByBadgeProps {
   homeLat: number | null
@@ -48,7 +55,7 @@ export function LeaveByBadge({ homeLat, homeLng, destLat, destLng, date, time }:
     }
   }, [key, homeLat, homeLng, destLat, destLng])
 
-  if (minutes == null) return null
+  if (minutes == null || minutes > MAX_USEFUL_DRIVE_MINUTES) return null
 
   const { time: leaveTime } = computeLeaveBy(date, time.slice(0, 5), minutes + BUFFER_MINUTES)
   return (

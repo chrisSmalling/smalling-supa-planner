@@ -107,6 +107,12 @@ worked examples that keep this calibrated.
     it won't know to add 15 minutes for rush hour. A missing or wrong
     address just means no leave-by badge shows; it never blocks saving the
     item.
+  - Capped at a 3-hour drive (`MAX_USEFUL_DRIVE_MINUTES` in
+    `LeaveByBadge.tsx`): OSRM only knows how to drive somewhere, so a
+    cross-country item (flying to a theme park, say) would otherwise get a
+    technically-correct-but-useless "leave by yesterday afternoon" from a
+    computed 19-hour drive. Past the cap, no badge shows at all rather than
+    bad advice.
 
 ## Project structure
 
