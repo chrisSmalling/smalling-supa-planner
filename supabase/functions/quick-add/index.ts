@@ -81,10 +81,13 @@ Quick add text: "${text}"`
 /**
  * Prefers a plain Edge Function secret (GEMINI_API_KEY / Gemini-api) if one
  * is ever set that way, otherwise falls back to reading the key out of
- * Supabase Vault — a database-level encrypted secret store, distinct from
- * Edge Function env vars, that isn't exposed via Deno.env on its own. The
- * service-role key used here is injected into every Edge Function
- * automatically; it never leaves this server-side function.
+ * Supabase Vault via the public.get_vault_secret() RPC (see migration
+ * add_vault_secret_reader). Vault itself lives in a `vault` schema that
+ * Supabase's REST API does not expose directly — a SECURITY DEFINER
+ * function in the exposed `public` schema, locked to service_role, is the
+ * documented way in from application code. The service-role key used here
+ * is injected into every Edge Function automatically; it never leaves this
+ * server-side function.
  */
 async function getGeminiApiKey(): Promise<string | null> {
   const direct = Deno.env.get('GEMINI_API_KEY') ?? Deno.env.get('Gemini-api')
@@ -94,15 +97,11 @@ async function getGeminiApiKey(): Promise<string | null> {
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!supabaseUrl || !serviceRoleKey) return null
 
-  const vaultClient = createClient(supabaseUrl, serviceRoleKey, { db: { schema: 'vault' } })
-  const { data, error } = await vaultClient
-    .from('decrypted_secrets')
-    .select('decrypted_secret')
-    .eq('name', VAULT_SECRET_NAME)
-    .single()
+  const client = createClient(supabaseUrl, serviceRoleKey)
+  const { data, error } = await client.rpc('get_vault_secret', { secret_name: VAULT_SECRET_NAME })
 
-  if (error || !data?.decrypted_secret) return null
-  return data.decrypted_secret as string
+  if (error || !data) return null
+  return data as string
 }
 
 Deno.serve(async (req: Request) => {
