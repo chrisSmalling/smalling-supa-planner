@@ -8,6 +8,7 @@ interface HouseholdState {
   loading: boolean
   error: string | null
   refresh: () => Promise<void>
+  updateHousehold: (patch: Partial<Pick<Household, 'home_address' | 'home_lat' | 'home_lng'>>) => Promise<void>
 }
 
 const HouseholdContext = React.createContext<HouseholdState | null>(null)
@@ -59,8 +60,23 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
     refresh()
   }, [refresh])
 
+  const updateHousehold = React.useCallback(
+    async (patch: Partial<Pick<Household, 'home_address' | 'home_lat' | 'home_lng'>>) => {
+      if (!household) return
+      const { data, error } = await supabase
+        .from('households')
+        .update(patch)
+        .eq('id', household.id)
+        .select()
+        .single()
+      if (error) throw error
+      setHousehold(data as unknown as Household)
+    },
+    [household],
+  )
+
   return (
-    <HouseholdContext.Provider value={{ household, members, loading, error, refresh }}>
+    <HouseholdContext.Provider value={{ household, members, loading, error, refresh, updateHousehold }}>
       {children}
     </HouseholdContext.Provider>
   )

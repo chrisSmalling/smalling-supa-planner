@@ -44,6 +44,8 @@ export interface Item {
   who: string | null
   notes: string | null
   location: string | null
+  location_lat: number | null
+  location_lng: number | null
   subtasks: Subtask[] | null
   repeat_freq: RepeatFreq
   repeat_interval: number
@@ -75,6 +77,9 @@ export interface Profile {
 export interface Household {
   id: string
   name: string
+  home_address: string | null
+  home_lat: number | null
+  home_lng: number | null
   created_at: string
 }
 

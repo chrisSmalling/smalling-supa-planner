@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { CategoryDot } from '@/components/ui/badge'
 import { supabase } from '@/lib/supabase'
+import { geocodeLocation } from '@/lib/geocode'
 import { formatDisplayDate, formatTime } from '@/lib/dateUtils'
 import { CATEGORY_LABEL } from '@/lib/types'
 import type { NewItem, Profile } from '@/lib/types'
@@ -66,22 +67,31 @@ export function QuickAddBar({ members, onConfirm }: QuickAddBarProps) {
 
   async function handleConfirm() {
     if (!parsed) return
-    const toInsert: NewItem[] = parsed
-      .filter((_, i) => included[i])
-      .map((p) => ({
-        title: p.title,
-        category: p.category,
-        starts_on: p.starts_on,
-        start_time: p.start_time,
-        who: resolveWho(p.who),
-        notes: p.notes,
-        location: p.location,
-        subtasks: p.subtasks ? p.subtasks.map((text) => ({ text, done: false })) : null,
-        repeat_freq: p.repeat_freq,
-        repeat_interval: p.repeat_interval,
-        repeat_weekdays: p.repeat_weekdays,
-        repeat_until: p.repeat_until,
-      }))
+    const toInsert: NewItem[] = await Promise.all(
+      parsed
+        .filter((_, i) => included[i])
+        .map(async (p) => {
+          // Best-effort: a failed lookup shouldn't block adding the item, it
+          // just won't get a leave-by time.
+          const coords = p.location ? await geocodeLocation(p.location).catch(() => null) : null
+          return {
+            title: p.title,
+            category: p.category,
+            starts_on: p.starts_on,
+            start_time: p.start_time,
+            who: resolveWho(p.who),
+            notes: p.notes,
+            location: p.location,
+            location_lat: coords?.lat ?? null,
+            location_lng: coords?.lng ?? null,
+            subtasks: p.subtasks ? p.subtasks.map((text) => ({ text, done: false })) : null,
+            repeat_freq: p.repeat_freq,
+            repeat_interval: p.repeat_interval,
+            repeat_weekdays: p.repeat_weekdays,
+            repeat_until: p.repeat_until,
+          }
+        }),
+    )
     await onConfirm(toInsert)
     setParsed(null)
     setText('')

@@ -13,6 +13,8 @@ function makeItem(overrides: Partial<Item>): Item {
     who: null,
     notes: null,
     location: null,
+    location_lat: null,
+    location_lng: null,
     subtasks: null,
     repeat_freq: 'none',
     repeat_interval: 1,

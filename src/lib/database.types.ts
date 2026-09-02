@@ -6,9 +6,30 @@ export type Database = {
   public: {
     Tables: {
       households: {
-        Row: { id: string; name: string; created_at: string }
-        Insert: { id?: string; name: string; created_at?: string }
-        Update: { id?: string; name?: string; created_at?: string }
+        Row: {
+          id: string
+          name: string
+          home_address: string | null
+          home_lat: number | null
+          home_lng: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          home_address?: string | null
+          home_lat?: number | null
+          home_lng?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          home_address?: string | null
+          home_lat?: number | null
+          home_lng?: number | null
+          created_at?: string
+        }
         Relationships: []
       }
       profiles: {
@@ -28,6 +49,8 @@ export type Database = {
           who: string | null
           notes: string | null
           location: string | null
+          location_lat: number | null
+          location_lng: number | null
           subtasks: unknown | null
           repeat_freq: string
           repeat_interval: number
@@ -46,6 +69,8 @@ export type Database = {
           who?: string | null
           notes?: string | null
           location?: string | null
+          location_lat?: number | null
+          location_lng?: number | null
           subtasks?: unknown | null
           repeat_freq?: string
           repeat_interval?: number
@@ -64,6 +89,8 @@ export type Database = {
           who?: string | null
           notes?: string | null
           location?: string | null
+          location_lat?: number | null
+          location_lng?: number | null
           subtasks?: unknown | null
           repeat_freq?: string
           repeat_interval?: number
@@ -72,6 +99,12 @@ export type Database = {
           created_by?: string | null
           created_at?: string
         }
+        Relationships: []
+      }
+      geocode_cache: {
+        Row: { query: string; lat: number; lng: number; created_at: string }
+        Insert: { query: string; lat: number; lng: number; created_at?: string }
+        Update: { query?: string; lat?: number; lng?: number; created_at?: string }
         Relationships: []
       }
       item_status: {

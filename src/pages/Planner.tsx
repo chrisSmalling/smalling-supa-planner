@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { X } from 'lucide-react'
+import { Settings, X } from 'lucide-react'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { useItems } from '@/hooks/useItems'
 import { WeekView } from '@/components/WeekView'
@@ -8,6 +8,7 @@ import { AddEditSheet } from '@/components/AddEditSheet'
 import { QuickAddBar } from '@/components/QuickAddBar'
 import { NeedsAttentionStrip } from '@/components/NeedsAttentionStrip'
 import { AddMemberButton } from '@/components/AddMemberButton'
+import { HouseholdSettingsSheet } from '@/components/HouseholdSettingsSheet'
 import { Button } from '@/components/ui/button'
 import { todayISO } from '@/lib/dateUtils'
 import type { Item, NewItem, Profile } from '@/lib/types'
@@ -25,6 +26,7 @@ export function Planner({ currentPerson, onSwitchPerson }: PlannerProps) {
   const itemsApi = useItems(household?.id ?? null)
   const [view, setView] = React.useState<ViewMode>('week')
   const [sheet, setSheet] = React.useState<SheetState>(null)
+  const [settingsOpen, setSettingsOpen] = React.useState(false)
 
   function openCreate(defaultDate: string) {
     setSheet({ item: null, defaultDate })
@@ -62,6 +64,13 @@ export function Planner({ currentPerson, onSwitchPerson }: PlannerProps) {
             </button>
           </div>
           <AddMemberButton householdId={household?.id ?? null} onAdded={refreshMembers} />
+          <button
+            className="rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
           <Button variant="ghost" size="sm" onClick={onSwitchPerson}>
             {currentPerson.display_name}
           </Button>
@@ -145,6 +154,8 @@ export function Planner({ currentPerson, onSwitchPerson }: PlannerProps) {
             : undefined
         }
       />
+
+      <HouseholdSettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   )
 }

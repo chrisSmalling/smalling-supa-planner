@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RecipeButton } from '@/components/RecipeButton'
 import { cn } from '@/lib/utils'
 import { googleMapsSearchUrl } from '@/lib/maps'
+import { geocodeLocation } from '@/lib/geocode'
 import { CATEGORIES, CATEGORY_LABEL } from '@/lib/types'
 import type { Category, Item, NewItem, Profile, RepeatFreq, Subtask } from '@/lib/types'
 
@@ -26,6 +27,8 @@ function emptyForm(defaultDate: string): NewItem {
     who: null,
     notes: null,
     location: null,
+    location_lat: null,
+    location_lng: null,
     subtasks: null,
     repeat_freq: 'none',
     repeat_interval: 1,
@@ -71,7 +74,21 @@ export function AddEditSheet({
     e.preventDefault()
     setSaving(true)
     try {
-      await onSave(form)
+      let toSave = form
+      const locationChanged = form.location !== (item?.location ?? null)
+      if (!form.location) {
+        toSave = { ...form, location_lat: null, location_lng: null }
+      } else if (locationChanged || form.location_lat == null) {
+        // Best-effort: an item is still worth saving even if this address
+        // doesn't resolve to coordinates — it just won't get a leave-by time.
+        try {
+          const coords = await geocodeLocation(form.location)
+          toSave = { ...form, location_lat: coords?.lat ?? null, location_lng: coords?.lng ?? null }
+        } catch (err) {
+          console.error('Failed to geocode location:', err)
+        }
+      }
+      await onSave(toSave)
       onOpenChange(false)
     } finally {
       setSaving(false)

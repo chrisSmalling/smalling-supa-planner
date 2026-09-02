@@ -1,10 +1,12 @@
 import { MapPin } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { CategoryDot } from '@/components/ui/badge'
+import { LeaveByBadge } from '@/components/LeaveByBadge'
 import { cn } from '@/lib/utils'
 import { formatTime } from '@/lib/dateUtils'
 import { milestoneAge } from '@/lib/recurrence'
 import { googleMapsSearchUrl } from '@/lib/maps'
+import { useHousehold } from '@/contexts/HouseholdContext'
 import type { EnrichedOccurrence } from '@/lib/occurrences'
 import type { Profile } from '@/lib/types'
 
@@ -18,6 +20,7 @@ interface ItemRowProps {
 const CHECKABLE = new Set(['chore', 'project'])
 
 export function ItemRow({ occurrence, members, onToggleDone, onClick }: ItemRowProps) {
+  const { household } = useHousehold()
   const { item, date, status } = occurrence
   const who = members.find((m) => m.id === item.who)
   const checkable = CHECKABLE.has(item.category)
@@ -54,6 +57,16 @@ export function ItemRow({ occurrence, members, onToggleDone, onClick }: ItemRowP
             .filter(Boolean)
             .join(' · ')}
         </p>
+        {item.start_time && (
+          <LeaveByBadge
+            homeLat={household?.home_lat ?? null}
+            homeLng={household?.home_lng ?? null}
+            destLat={item.location_lat}
+            destLng={item.location_lng}
+            date={date}
+            time={item.start_time}
+          />
+        )}
       </div>
 
       {item.location && (

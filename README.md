@@ -91,10 +91,22 @@ flags mean "I guessed, double-check this," not "this field happens to be
 null." See the prompt in `supabase/functions/quick-add/index.ts` for the
 worked examples that keep this calibrated.
 
-**Not built**: turn-by-turn "leave by" times. The Maps link is free (just a
-URL); a real leave-by time needs an actual travel-time API (Google Maps
-Distance Matrix or similar) plus a home address to calculate from — a
-deliberate scope line since that means a second paid API key.
+- **"Leave by" times**: set a home address once (gear icon in the header).
+  Any item with both a start time and a location gets a "Leave by 8:42 AM ·
+  18 min drive" line, computed from free/open services — no paid API, no
+  billing account:
+  - [Nominatim](https://nominatim.org) (OpenStreetMap's geocoder) turns the
+    home address and each item's location into coordinates, cached forever
+    in the `geocode_cache` table so the same address never triggers a
+    second lookup.
+  - [OSRM](http://project-osrm.org)'s public demo router estimates driving
+    minutes between two coordinates.
+  - The trade-off: both are free public services meant for light use (which
+    a two-person household app is), and OSRM's estimate is a static
+    "typical road speed," not traffic-aware like Google's Distance Matrix —
+    it won't know to add 15 minutes for rush hour. A missing or wrong
+    address just means no leave-by badge shows; it never blocks saving the
+    item.
 
 ## Project structure
 
@@ -115,14 +127,17 @@ src/
     AddEditSheet.tsx       — manual add/edit, repeat rule builder, subtasks, location, recipe button
     QuickAddBar.tsx        — calls the quick-add Edge Function, confirm-before-write
     RecipeButton.tsx        — calls suggest-recipe, fills the meal's checklist + notes
+    LeaveByBadge.tsx         — estimates drive time (OSRM) and shows a leave-by time
+    HouseholdSettingsSheet.tsx — sets the home address used for leave-by times
     NeedsAttentionStrip.tsx
   pages/
     SetupHousehold.tsx, WhoAreYou.tsx, Planner.tsx
 supabase/
-  migrations/              — households, profiles, items, item_status, RLS (see 0003 re: open access), location
+  migrations/              — households, profiles, items, item_status, RLS (see 0003 re: open access), location, home address + geocode cache
   functions/
     quick-add/              — Gemini parse (server-side key only)
     suggest-recipe/          — Gemini recipe suggestion for a meal item
+    geocode/                 — Nominatim lookup, cached in geocode_cache
 ```
 
 ## Build order this followed
