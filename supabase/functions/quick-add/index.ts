@@ -67,7 +67,7 @@ Rules:
 - Split the input into one item per distinct thing being planned.
 - category is one of: activity, meal, chore, project, appointment, milestone, note.
 - starts_on is always a concrete YYYY-MM-DD date, resolved relative to today. A bare weekday ("Saturday", "Tuesday") means the next occurrence of that weekday on or after today.
-- start_time is 24h "HH:MM", or null for anything that isn't a specific time (all-day).
+- start_time is 24h "HH:MM", or null for anything that isn't a specific time (all-day). A day-part word is itself a time and should resolve to one, not get discarded as vague: "breakfast" -> 08:00, "brunch" -> 10:30, "lunch" -> 12:00, "dinner" -> 18:00, "snack" -> null (too variable to guess). "Chicken tacos for dinner" has a time — 18:00 — use it, don't leave start_time null and don't flag it; you weren't guessing, the user told you the part of the day.
 - Detect recurrence phrases and set repeat_freq/repeat_interval/repeat_weekdays/repeat_until accordingly:
   - "every Saturday" -> weekly, repeat_weekdays [6] (0=Sun..6=Sat).
   - "every other week" -> weekly, repeat_interval 2.
@@ -88,9 +88,9 @@ Rules:
   for breakfast", not "prep"), and flag it as inferred so it's clear this
   wasn't literally typed:
   - "French toast Friday for breakfast, will need to be prepped the night
-    before" -> TWO items: (1) meal "French toast", Friday, no time; (2) chore
-    "Prep French toast for breakfast", Thursday (the night before), no time,
-    flags: ["inferred prep step"].
+    before" -> TWO items: (1) meal "French toast", Friday, 08:00 (breakfast);
+    (2) chore "Prep French toast for breakfast", Thursday (the night before),
+    no time, flags: ["inferred prep step"].
   - "Thanksgiving dinner Thursday, need to thaw the turkey" -> the dinner
     (appointment/activity, Thursday) PLUS a chore "Thaw the turkey" dated
     2-3 days earlier (thawing a turkey takes days — use your judgment on the
@@ -100,10 +100,17 @@ Rules:
     a chore "Pack Emma's costume" the night before or morning of.
   - If nothing implies a separate prep action, don't invent one — a plain
     "dentist Tuesday at 2" is just one item.
-- flags: short phrases naming anything ambiguous you had to guess at (e.g.
-  "assumed this year", "no time given"), and always flag any item you split
-  out yourself rather than one the user stated outright (e.g. "inferred prep
-  step"). Empty array only if nothing was ambiguous and nothing was inferred.
+- flags are for genuine uncertainty, not routine nulls. A field being empty
+  because the user simply didn't mention it (no time, no one named, no end
+  date) is the normal, correct state of an all-day/unassigned/open-ended
+  item — that is NOT something to flag. Only flag when you actually had to
+  guess, resolve something unclear, or interpret rather than just read: a
+  guessed year, a vague time you couldn't pin down ("later", "sometime"), a
+  name that's close to but doesn't exactly match the roster, an assumed prep
+  lead time. And always flag an item you split out yourself rather than one
+  the user stated outright (e.g. "inferred prep step"). Empty array is the
+  common case, not the exception — most well-specified items need no flag at
+  all.
 - confidence: "high" | "medium" | "low" for how sure you are you parsed this item correctly.
 - Output ONLY the JSON object matching the schema. No prose, no markdown fences.
 
