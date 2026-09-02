@@ -8,13 +8,17 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 const VAULT_SECRET_NAME = 'Gemini-api'
 
 const GEMINI_MODEL = 'gemini-3.6-flash'
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
-// Google's own overload backoff advice is "usually temporary" — a single
-// retry catches most of those. Each attempt is capped so a slow overloaded
-// backend fails in seconds, not the 60-90s it can otherwise hang for with
-// no timeout at all.
+// Tried when the primary model reports 503 (overloaded) — a different model
+// has independent capacity, so this actually improves the odds during a
+// sustained outage instead of just re-knocking on the same busy door.
+// (Confirmed via logs: gemini-3.6-flash returned the identical "high
+// demand" 503 for 25+ minutes straight on 2026-09-02, so blindly retrying
+// the same model wasn't going to help.)
+const GEMINI_FALLBACK_MODEL = 'gemini-3.6-flash-lite'
+const geminiUrl = (model: string) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
+// Each attempt is capped so a slow/overloaded backend fails in seconds, not
+// the 60-90s it can otherwise hang for with no timeout at all.
 const GEMINI_TIMEOUT_MS = 15000
-const GEMINI_RETRY_DELAY_MS = 1000
 
 const CATEGORIES = ['activity', 'meal', 'chore', 'project', 'appointment', 'milestone', 'note']
 const REPEAT_FREQS = ['none', 'daily', 'weekly', 'monthly', 'yearly']
@@ -172,15 +176,11 @@ async function getGeminiApiKey(): Promise<string | null> {
   return data as string
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-async function callGemini(prompt: string, apiKey: string): Promise<Response> {
+async function callGemini(prompt: string, apiKey: string, model: string): Promise<Response> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
   try {
-    return await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+    return await fetch(`${geminiUrl(model)}?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -226,21 +226,29 @@ Deno.serve(async (req: Request) => {
     const today = new Date().toISOString().slice(0, 10)
     const prompt = buildPrompt(text, today, roster ?? [])
 
-    let geminiRes: Response
-    try {
-      geminiRes = await callGemini(prompt, apiKey)
-      // 503 = Google's own "temporarily overloaded, try again" — worth
-      // exactly one retry rather than making the user resubmit by hand.
-      if (geminiRes.status === 503) {
-        await sleep(GEMINI_RETRY_DELAY_MS)
-        geminiRes = await callGemini(prompt, apiKey)
+    async function tryModel(model: string): Promise<{ res: Response } | { timedOut: boolean }> {
+      try {
+        return { res: await callGemini(prompt, apiKey!, model) }
+      } catch (err) {
+        const timedOut = err instanceof DOMException && err.name === 'AbortError'
+        console.error(`Gemini (${model}) ${timedOut ? 'timed out' : 'errored'}:`, err)
+        return { timedOut }
       }
-    } catch (err) {
-      const timedOut = err instanceof DOMException && err.name === 'AbortError'
-      console.error(timedOut ? 'Gemini request timed out' : 'Gemini request errored:', err)
+    }
+
+    let usedModel = GEMINI_MODEL
+    let attempt = await tryModel(GEMINI_MODEL)
+    // 503 (overloaded) or a hung/failed request — try a different model
+    // with independent capacity rather than re-knocking on the same door.
+    if ('timedOut' in attempt || attempt.res.status === 503) {
+      usedModel = GEMINI_FALLBACK_MODEL
+      attempt = await tryModel(GEMINI_FALLBACK_MODEL)
+    }
+
+    if ('timedOut' in attempt) {
       return new Response(
         JSON.stringify({
-          error: timedOut
+          error: attempt.timedOut
             ? "Gemini is taking too long to respond (it's probably overloaded) — try again in a moment."
             : 'Could not reach Gemini — try again in a moment.',
         }),
@@ -248,12 +256,13 @@ Deno.serve(async (req: Request) => {
       )
     }
 
+    const geminiRes = attempt.res
     if (!geminiRes.ok) {
       const detail = await geminiRes.text()
-      console.error(`Gemini request failed (${geminiRes.status}):`, detail)
+      console.error(`Gemini (${usedModel}) request failed (${geminiRes.status}):`, detail)
       const message =
         geminiRes.status === 503
-          ? "Gemini is overloaded right now — try again in a moment."
+          ? 'Gemini is overloaded right now — try again in a moment.'
           : `Gemini request failed: ${detail}`
       return new Response(JSON.stringify({ error: message }), {
         status: 502,
