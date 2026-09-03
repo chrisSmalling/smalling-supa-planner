@@ -42,7 +42,7 @@ export function SetupHousehold() {
     <div className="flex min-h-dvh items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="space-y-1 text-center">
-          <h1 className="text-2xl font-semibold">Superplan</h1>
+          <h1 className="text-2xl font-semibold">Smalling SupaPlan</h1>
           <p className="text-sm text-muted-foreground">
             Let's set up your household. Open this same link on your partner's phone afterward —
             no account needed.

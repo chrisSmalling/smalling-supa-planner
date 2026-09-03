@@ -15,8 +15,8 @@ export default defineConfig({
         'icons/apple-touch-icon.png',
       ],
       manifest: {
-        name: 'Superplan',
-        short_name: 'Superplan',
+        name: 'Smalling SupaPlan',
+        short_name: 'SupaPlan',
         description: "Your family's shared weekly planner",
         theme_color: '#0f172a',
         background_color: '#0f172a',

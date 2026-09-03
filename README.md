@@ -1,4 +1,4 @@
-# Superplan
+# Smalling SupaPlan
 
 A mobile-first PWA for one family's shared weekly planner: activities, meals,
 chores/projects, appointments, and recurring milestones, in a week view and a

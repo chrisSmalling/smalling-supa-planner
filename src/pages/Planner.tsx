@@ -46,8 +46,8 @@ export function Planner({ currentPerson, onSwitchPerson }: PlannerProps) {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col">
-      <header className="flex items-center justify-between border-b px-4 py-3">
-        <h1 className="text-lg font-semibold">Superplan</h1>
+      <header className="flex items-center justify-between border-b px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <h1 className="text-lg font-semibold">Smalling SupaPlan</h1>
         <div className="flex items-center gap-2">
           <div className="flex rounded-md border border-input p-0.5 text-sm">
             <button
@@ -104,7 +104,7 @@ export function Planner({ currentPerson, onSwitchPerson }: PlannerProps) {
         onItemClick={(item, date) => openEdit(item, date)}
       />
 
-      <main className="flex-1 overflow-y-auto px-4 pb-24 pt-2">
+      <main className="flex-1 overflow-y-auto px-4 pt-2" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}>
         {view === 'week' ? (
           <WeekView
             items={itemsApi.items}
@@ -133,7 +133,8 @@ export function Planner({ currentPerson, onSwitchPerson }: PlannerProps) {
       <button
         type="button"
         onClick={() => openCreate(todayISO())}
-        className="fixed bottom-6 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-2xl text-primary-foreground shadow-lg"
+        className="fixed right-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-2xl text-primary-foreground shadow-lg"
+        style={{ bottom: 'max(1.5rem, calc(env(safe-area-inset-bottom) + 0.75rem))' }}
         aria-label="Add item"
       >
         +
