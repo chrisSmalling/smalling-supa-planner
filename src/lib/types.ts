@@ -88,3 +88,12 @@ export interface Occurrence {
   item: Item
   date: string // YYYY-MM-DD
 }
+
+/** A checked-off grocery item for one week (see src/lib/groceryList.ts for how the list itself is built). */
+export interface GroceryCheck {
+  id: string
+  household_id: string
+  week_start: string // YYYY-MM-DD
+  ingredient: string // normalized (trimmed, lowercased) — the join key back to a GroceryIngredient
+  checked_at: string
+}

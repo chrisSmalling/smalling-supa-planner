@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Settings, X } from 'lucide-react'
+import { Settings, ShoppingCart, X } from 'lucide-react'
 import { useHousehold } from '@/contexts/HouseholdContext'
 import { useItems } from '@/hooks/useItems'
 import { WeekView } from '@/components/WeekView'
@@ -9,8 +9,9 @@ import { QuickAddBar } from '@/components/QuickAddBar'
 import { NeedsAttentionStrip } from '@/components/NeedsAttentionStrip'
 import { AddMemberButton } from '@/components/AddMemberButton'
 import { HouseholdSettingsSheet } from '@/components/HouseholdSettingsSheet'
+import { GroceryListSheet } from '@/components/GroceryListSheet'
 import { Button } from '@/components/ui/button'
-import { todayISO } from '@/lib/dateUtils'
+import { todayISO, startOfWeekISO, addDaysISO } from '@/lib/dateUtils'
 import type { Item, NewItem, Profile } from '@/lib/types'
 
 type ViewMode = 'week' | 'month'
@@ -27,6 +28,8 @@ export function Planner({ currentPerson, onSwitchPerson }: PlannerProps) {
   const [view, setView] = React.useState<ViewMode>('week')
   const [sheet, setSheet] = React.useState<SheetState>(null)
   const [settingsOpen, setSettingsOpen] = React.useState(false)
+  const [groceryOpen, setGroceryOpen] = React.useState(false)
+  const thisWeekStart = startOfWeekISO(todayISO())
 
   function openCreate(defaultDate: string) {
     setSheet({ item: null, defaultDate })
@@ -46,9 +49,14 @@ export function Planner({ currentPerson, onSwitchPerson }: PlannerProps) {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col">
-      <header className="flex items-center justify-between border-b px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <h1 className="text-lg font-semibold">Smalling SupaPlan</h1>
-        <div className="flex items-center gap-2">
+      <header className="border-b px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-semibold">Smalling SupaPlan</h1>
+          <Button variant="ghost" size="sm" onClick={onSwitchPerson}>
+            {currentPerson.display_name}
+          </Button>
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-2">
           <div className="flex rounded-md border border-input p-0.5 text-sm">
             <button
               className={`rounded-sm px-3 py-1 ${view === 'week' ? 'bg-primary text-primary-foreground' : ''}`}
@@ -63,17 +71,23 @@ export function Planner({ currentPerson, onSwitchPerson }: PlannerProps) {
               Month
             </button>
           </div>
-          <AddMemberButton householdId={household?.id ?? null} onAdded={refreshMembers} />
-          <button
-            className="rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-            onClick={() => setSettingsOpen(true)}
-            aria-label="Settings"
-          >
-            <Settings className="h-4 w-4" />
-          </button>
-          <Button variant="ghost" size="sm" onClick={onSwitchPerson}>
-            {currentPerson.display_name}
-          </Button>
+          <div className="flex items-center gap-1">
+            <AddMemberButton householdId={household?.id ?? null} onAdded={refreshMembers} />
+            <button
+              className="rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              onClick={() => setGroceryOpen(true)}
+              aria-label="Grocery list"
+            >
+              <ShoppingCart className="h-4 w-4" />
+            </button>
+            <button
+              className="rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Settings"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -157,6 +171,16 @@ export function Planner({ currentPerson, onSwitchPerson }: PlannerProps) {
       />
 
       <HouseholdSettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} />
+
+      <GroceryListSheet
+        open={groceryOpen}
+        onOpenChange={setGroceryOpen}
+        householdId={household?.id ?? null}
+        items={itemsApi.items}
+        statuses={itemsApi.statuses}
+        weekStart={thisWeekStart}
+        weekEnd={addDaysISO(thisWeekStart, 6)}
+      />
     </div>
   )
 }

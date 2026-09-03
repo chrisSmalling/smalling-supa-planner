@@ -155,6 +155,30 @@ export type Database = {
         }
         Relationships: []
       }
+      grocery_checks: {
+        Row: {
+          id: string
+          household_id: string
+          week_start: string
+          ingredient: string
+          checked_at: string
+        }
+        Insert: {
+          id?: string
+          household_id: string
+          week_start: string
+          ingredient: string
+          checked_at?: string
+        }
+        Update: {
+          id?: string
+          household_id?: string
+          week_start?: string
+          ingredient?: string
+          checked_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>

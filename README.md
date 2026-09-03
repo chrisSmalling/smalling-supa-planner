@@ -114,6 +114,26 @@ worked examples that keep this calibrated.
     computed 19-hour drive. Past the cap, no badge shows at all rather than
     bad advice.
 
+## Grocery list
+
+The cart icon in the header aggregates ingredient checklists off every meal
+item occurring in the current week (Sun–Sat) into one deduped, checkable
+shopping list — no Instacart integration, just the ingredients you already
+type into a meal's checklist:
+
+- Ingredients are matched by normalized text (trimmed, lowercased), so
+  "Cheese" on Tuesday's tacos and "cheese" on Thursday's nachos collapse
+  into one line, with both meal names shown underneath it.
+- A recurring meal (e.g. "Tacos every Tuesday") only contributes its
+  ingredients once even if it lands on multiple days within the week.
+- Skipping a meal's occurrence excludes its ingredients for that date; if
+  none of its occurrences in the week survive, it drops off the list.
+- Checked-off state is scoped to the calendar week (`grocery_checks`,
+  keyed by household + week start + ingredient) so a recurring ingredient
+  starts unchecked again next week instead of staying checked from
+  groceries already bought. A row's existence means "checked" — clearing
+  it deletes the row, same pattern as `item_status`.
+
 ## Project structure
 
 ```
@@ -146,6 +166,13 @@ supabase/
     geocode/                 — Nominatim lookup, cached in geocode_cache
 ```
 
+- `src/lib/groceryList.ts` — pure aggregation: meal items + statuses + a date
+  range in, a deduped `GroceryIngredient[]` out.
+- `src/hooks/useGroceryChecks.ts` — loads/toggles which ingredients are
+  checked off for one household's week (`grocery_checks` table).
+- `src/components/GroceryListSheet.tsx` — the sheet UI, opened from the cart
+  icon in `Planner.tsx`'s header.
+
 ## Build order this followed
 
 1. Household + profiles + RLS (later reworked to remove auth entirely — see above)
@@ -156,10 +183,12 @@ supabase/
 6. Needs-attention strip (lookahead + overdue)
 7. PWA install + offline read cache
 
-**Parked** until the planner earns daily use: Instacart integration for meal
-ingredients (`category = 'meal'` items already exist; a `meal_ingredients`
-child table + a "build this week's list" flow that POSTs to the Instacart
-Developer Platform is the next step, not part of this build).
+8. Grocery list: aggregate the week's meal ingredients into one checkable
+   shopping list (see above) — the "build this week's list" half of the
+   originally parked idea below, without the Instacart POST.
+
+**Still parked**: actually sending the grocery list to the Instacart
+Developer Platform (add-to-cart deep link) instead of just displaying it.
 
 ## Notes on modeling choices
 
